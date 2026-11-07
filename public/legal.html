@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Información legal — Realty Photo AI</title>
+<link rel="stylesheet" href="/common.css" />
+<style>
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px 24px 80px; }
+  .ltabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 26px; }
+  .ltabs a { text-decoration: none; color: var(--muted); font-weight: 700; font-size: 14px; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line); background: #fff; }
+  .ltabs a.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  article { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 32px; }
+  @media (max-width: 600px) { article { padding: 20px; } }
+  article h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: -.02em; }
+  article .upd { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  article h2 { font-size: 18px; margin: 28px 0 8px; letter-spacing: -.01em; }
+  article p, article li { color: #333; font-size: 15px; }
+  article ul { padding-left: 20px; }
+  article table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  article td, article th { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  article th { background: #faf9f6; width: 32%; }
+  .miss { background: #fff1d6; color: #8a5a00; padding: 1px 6px; border-radius: 5px; font-weight: 700; font-size: 13px; }
+  .note { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--accent); margin-bottom: 20px; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; padding: 20px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" id="brand"></a>
+  <div class="hright"><span id="langSlot"></span><a class="btn ghost sm" href="/app" id="toApp"></a></div>
+</header>
+<div class="wrap">
+  <nav class="ltabs" id="ltabs"></nav>
+  <div class="note" id="transNote" hidden></div>
+  <article id="doc"></article>
+</div>
+<footer id="foot"></footer>
+
+<script src="/common.js"></script>
+<script>
+$("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
+$("#langSlot").outerHTML = langSwitcherHTML();
+
+const DOCS = ["aviso-legal", "privacidad", "condiciones", "cookies"];
+let docId = location.pathname.replace("/", "");
+if (!DOCS.includes(docId)) docId = (location.hash || "").slice(1) || "aviso-legal";
+if (!DOCS.includes(docId)) docId = "aviso-legal";
+
+const UPDATED = { es: "8 de noviembre de 2026", en: "8 November 2026", ru: "8 ноября 2026 г." };
+
+function render() {
+  const c = CONFIG || {}, L = c.legal || {};
+  const miss = (k) => `<span class="miss">[${{ es: "pendiente", en: "pending", ru: "не заполнено" }[lang]}: LEGAL_${k}]</span>`;
+  const v = (k, key) => (L[k] ? escapeHtml(L[k]) : miss(key));
+  const brand = escapeHtml(c.brand || "Realty Photo AI");
+  const site = escapeHtml(location.origin);
+  const email = L.email ? `<a href="mailto:${escapeHtml(L.email)}">${escapeHtml(L.email)}</a>` : miss("EMAIL");
+  const owner = v("name", "NAME");
+  const vat = L.vatIncluded !== false;
+  const D = TEXTS[lang]({ brand, site, email, owner, v, L, c, vat });
+
+  $("#ltabs").innerHTML = DOCS.map((d) => `<a href="/${d}" class="${d === docId ? "on" : ""}">${D.tabs[d]}</a>`).join("");
+  const doc = D.docs[docId];
+  $("#doc").innerHTML = `<h1>${doc.title}</h1><div class="upd">${D.updated}: ${UPDATED[lang]}</div>${doc.body}`;
+  $("#transNote").hidden = lang === "es";
+  $("#transNote").textContent = D.transNote || "";
+  $("#toApp").textContent = t("openApp");
+  $("#foot").innerHTML = `© ${new Date().getFullYear()} ${owner} · ${brand}`;
+  document.title = `${doc.title} — ${c.brand || "Realty Photo AI"}`;
+}
+
+// Таблица с данными владельца (общая для aviso и privacidad)
+const ownerTable = ({ v, email, site }, labels) => `<table>
+  <tr><th>${labels.name}</th><td>${v("name", "NAME")}</td></tr>
+  <tr><th>${labels.nif}</th><td>${v("nif", "NIF")}</td></tr>
+  <tr><th>${labels.address}</th><td>${v("address", "ADDRESS")}</td></tr>
+  <tr><th>Email</th><td>${email}</td></tr>
+  ${CONFIG?.legal?.phone ? `<tr><th>${labels.phone}</th><td>${escapeHtml(CONFIG.legal.phone)}</td></tr>` : ""}
+  ${CONFIG?.legal?.registry ? `<tr><th>${labels.registry}</th><td>${escapeHtml(CONFIG.legal.registry)}</td></tr>` : ""}
+  <tr><th>${labels.web}</th><td>${site}</td></tr></table>`;
+
+const TEXTS = {
+// =====================================================================
+es: (x) => ({
+  updated: "Última actualización",
+  tabs: { "aviso-legal": "Aviso legal", privacidad: "Privacidad", condiciones: "Condiciones", cookies: "Cookies" },
+  docs: {
+    "aviso-legal": { title: "Aviso legal", body: `
+      <h2>1. Titular del sitio web</h2>
+      <p>En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de los datos del titular:</p>
+      ${ownerTable(x, { name: "Titular", nif: "NIF", address: "Domicilio", phone: "Teléfono", registry: "Datos registrales", web: "Sitio web" })}
+      <h2>2. Objeto</h2>
+      <p>Este aviso regula el acceso y uso del sitio web y de la aplicación ${x.brand}, un servicio en línea de edición de fotografías inmobiliarias mediante inteligencia artificial dirigido a agentes y profesionales inmobiliarios. La contratación del servicio se rige por las <a href="/condiciones">Condiciones de uso y contratación</a>.</p>
+      <h2>3. Uso del sitio</h2>
+      <p>El usuario se compromete a utilizar el sitio de forma lícita y conforme a la buena fe, a no dañar, sobrecargar o inutilizar el servicio, a no intentar acceder a cuentas o datos ajenos y a no introducir programas maliciosos.</p>
+      <h2>4. Propiedad intelectual e industrial</h2>
+      <p>El software, el diseño, los textos, los logotipos y demás elementos del sitio pertenecen al titular o a sus licenciantes y están protegidos por la normativa de propiedad intelectual e industrial. Las fotografías que suben los usuarios y los resultados obtenidos pertenecen a sus titulares, según se indica en las Condiciones.</p>
+      <h2>5. Responsabilidad</h2>
+      <p>El titular trabaja para que el servicio esté disponible y funcione correctamente, pero no puede garantizar la ausencia de interrupciones o errores. No se responsabiliza de los contenidos de sitios de terceros enlazados desde este sitio.</p>
+      <h2>6. Protección de datos y cookies</h2>
+      <p>El tratamiento de datos personales se describe en la <a href="/privacidad">Política de privacidad</a> y el uso de cookies en la <a href="/cookies">Política de cookies</a>.</p>
+      <h2>7. Legislación aplicable y jurisdicción</h2>
+      <p>Este aviso se rige por la legislación española. Si el usuario tiene la condición de consumidor, serán competentes los juzgados y tribunales de su domicilio.</p>` },
+
+    privacidad: { title: "Política de privacidad", body: `
+      <h2>1. Responsable del tratamiento</h2>
+      ${ownerTable(x, { name: "Responsable", nif: "NIF", address: "Domicilio", phone: "Teléfono", registry: "Datos registrales", web: "Sitio web" })}
+      <p>Puedes contactar con nosotros para cualquier cuestión sobre privacidad en ${x.email}.</p>
+      <h2>2. Qué datos tratamos</h2>
+      <ul>
+        <li><b>Datos de cuenta:</b> email, contraseña (guardada cifrada con un algoritmo irreversible), idioma, fecha de alta y de aceptación de las condiciones.</li>
+        <li><b>Fotografías y resultados:</b> las imágenes que subes, una miniatura para tu historial y los enlaces a las imágenes procesadas.</li>
+        <li><b>Datos de uso:</b> saldo de créditos, historial de procesamientos y, si llegaste por invitación, quién te invitó.</li>
+        <li><b>Datos de pago:</b> los datos de tu tarjeta los trata directamente Stripe; nosotros solo recibimos el importe, el paquete comprado y la referencia del pago.</li>
+        <li><b>Datos técnicos:</b> dirección IP al registrarte e iniciar sesión, y registros técnicos del servidor.</li>
+      </ul>
+      <p>Las fotografías pueden mostrar personas, matrículas o documentos. Te pedimos que evites subir imágenes con datos personales de terceros o que los ocultes antes de subirlas.</p>
+      <h2>3. Finalidades y bases jurídicas</h2>
+      <table>
+        <tr><th>Finalidad</th><td><b>Base jurídica (RGPD)</b></td></tr>
+        <tr><th>Crear y gestionar tu cuenta y prestar el servicio (procesar tus fotos)</th><td>Ejecución del contrato — art. 6.1.b</td></tr>
+        <tr><th>Cobrar los paquetes, emitir facturas y cumplir obligaciones contables y fiscales</th><td>Obligación legal — art. 6.1.c</td></tr>
+        <tr><th>Seguridad, prevención de fraude y del abuso del regalo de bienvenida y del programa de invitaciones</th><td>Interés legítimo — art. 6.1.f</td></tr>
+        <tr><th>Responder a tus consultas</th><td>Ejecución del contrato o interés legítimo</td></tr>
+      </table>
+      <p>No vendemos tus datos, no enviamos publicidad y no tomamos decisiones automatizadas con efectos jurídicos sobre ti. No usamos tus fotografías para entrenar modelos de inteligencia artificial.</p>
+      <h2>4. Destinatarios y encargados del tratamiento</h2>
+      <p>Para prestar el servicio usamos proveedores que tratan datos por cuenta nuestra:</p>
+      <ul>
+        <li><b>Railway Corporation</b> (EE. UU.): alojamiento del servidor y la base de datos, ubicados en la Unión Europea (Países Bajos).</li>
+        <li><b>Features &amp; Labels, Inc. (fal.ai)</b> (EE. UU.): procesamiento de las imágenes con modelos de IA, incluidos modelos de Google.</li>
+        <li><b>Stripe Payments Europe, Ltd.</b> (Irlanda): procesamiento de pagos y facturas. Para algunas finalidades, como la prevención del fraude, Stripe actúa como responsable independiente.</li>
+      </ul>
+      <p>También podremos comunicar datos a las administraciones públicas y a los juzgados cuando la ley lo exija.</p>
+      <h2>5. Transferencias internacionales</h2>
+      <p>Algunos proveedores están en Estados Unidos. Estas transferencias se amparan en el Marco de Privacidad de Datos UE-EE. UU., cuando el proveedor está adherido, o en las Cláusulas Contractuales Tipo aprobadas por la Comisión Europea.</p>
+      <h2>6. Plazos de conservación</h2>
+      <ul>
+        <li>Datos de cuenta, miniaturas e historial: mientras tu cuenta esté activa. Puedes borrar cualquier foto de tu historial en cualquier momento.</li>
+        <li>Imágenes procesadas: se alojan en la red de entrega de fal.ai mediante enlaces privados difíciles de adivinar y se conservan según su política de retención.</li>
+        <li>Datos de pagos y facturación: 6 años (art. 30 del Código de Comercio) y los plazos que exija la normativa tributaria.</li>
+        <li>Datos técnicos de seguridad: el tiempo imprescindible para detectar abusos.</li>
+      </ul>
+      <h2>7. Tus derechos</h2>
+      <p>Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad escribiendo a ${x.email}. Puedes eliminar tu cuenta directamente desde la aplicación (menú de cuenta → «Eliminar cuenta»). Si consideras que no hemos atendido correctamente tu solicitud, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" rel="noopener">www.aepd.es</a>).</p>
+      <h2>8. Seguridad</h2>
+      <p>Usamos conexión cifrada (HTTPS), contraseñas cifradas de forma irreversible, cookies de sesión protegidas y acceso restringido a los datos.</p>
+      <h2>9. Menores</h2>
+      <p>El servicio está dirigido a profesionales mayores de 18 años.</p>
+      <h2>10. Cambios</h2>
+      <p>Si modificamos esta política de forma relevante, te lo comunicaremos por email o en la aplicación.</p>` },
+
+    condiciones: { title: "Condiciones de uso y contratación", body: `
+      <h2>1. Partes y aceptación</h2>
+      <p>Estas condiciones regulan la relación entre ${x.owner} (el «prestador») y la persona que crea una cuenta en ${x.brand} (el «usuario»). Al registrarte aceptas estas condiciones. Versión vigente: ${escapeHtml(x.c.termsVersion || "")}.</p>
+      <h2>2. El servicio</h2>
+      <p>${x.brand} permite subir fotografías de inmuebles y obtener versiones editadas mediante inteligencia artificial: mejora de luz y color, amueblado virtual, eliminación de objetos, cambio de cielo, efecto atardecer, escalado de resolución y otras ediciones. Los resultados los genera automáticamente un modelo de IA, pueden variar entre intentos y pueden contener imperfecciones. El usuario debe revisarlos antes de publicarlos.</p>
+      <h2>3. Cuenta</h2>
+      <ul>
+        <li>Debes ser mayor de 18 años y facilitar un email válido.</li>
+        <li>Eres responsable de guardar tu contraseña y de la actividad de tu cuenta.</li>
+        <li>El regalo de bienvenida es de uno por persona. Crear varias cuentas para obtenerlo de nuevo o abusar del programa de invitaciones permite suspender las cuentas y anular los créditos gratuitos.</li>
+      </ul>
+      <h2>4. Créditos, precios y pago</h2>
+      <ul>
+        <li>El servicio funciona con créditos: procesar una foto cuesta 1 crédito y en resolución 4K, 2 créditos. El escalado posterior está incluido.</li>
+        <li>Los precios de los paquetes se muestran en la web antes de la compra, en euros. ${x.vat ? "Los precios incluyen el IVA aplicable." : "Los precios no incluyen el IVA, que se añadirá cuando corresponda."}</li>
+        <li>El pago se realiza a través de Stripe. Tras el pago recibirás la confirmación y la factura por email.</li>
+        <li>Los créditos no caducan mientras el servicio esté activo. No son transferibles ni canjeables por dinero, salvo en los casos de los apartados 5 y 8.</li>
+        <li>Si un procesamiento falla por un error técnico, el crédito se devuelve automáticamente. Cada nuevo intento («Otra versión») consume créditos.</li>
+        <li>Los créditos gratuitos (bienvenida e invitaciones) no tienen valor económico.</li>
+      </ul>
+      <h2>5. Derecho de desistimiento</h2>
+      <p>Si eres consumidor, tienes derecho a desistir de la compra de un paquete en un plazo de 14 días naturales desde la compra. Al comprar solicitas expresamente que el servicio empiece de inmediato para poder usar los créditos enseguida. Por eso, si desistes, te devolveremos el importe proporcional a los créditos de ese paquete que no hayas utilizado (art. 108.3 del Texto Refundido de la Ley General para la Defensa de los Consumidores y Usuarios). Una vez usados todos los créditos del paquete, el servicio se considera completamente prestado.</p>
+      <p>Para desistir, escribe a ${x.email} indicando tu email de cuenta y la compra; también puedes usar el modelo de formulario de desistimiento del Anexo B de dicha ley. Haremos la devolución en un plazo máximo de 14 días, por el mismo medio de pago. Aplicamos esta misma política a los usuarios profesionales.</p>
+      <h2>6. Uso aceptable</h2>
+      <ul>
+        <li>Solo puedes subir fotografías sobre las que tengas derechos o autorización.</li>
+        <li>No subas imágenes ilícitas ni imágenes de personas sin su consentimiento.</li>
+        <li>Las imágenes editadas no deben inducir a error a compradores o arrendatarios: no ocultes defectos reales ni alteres elementos estructurales, vistas o superficies. Indica claramente cuándo una imagen ha sido amueblada o modificada virtualmente. La aplicación añade por defecto la marca «Amueblado virtual» al descargar.</li>
+        <li>Eres el único responsable del uso y la publicación de las imágenes.</li>
+      </ul>
+      <h2>7. Propiedad de las imágenes</h2>
+      <p>Conservas todos los derechos sobre las fotografías que subes y sobre los resultados. Nos concedes únicamente la licencia necesaria para procesarlas, almacenarlas y mostrártelas mientras uses el servicio. No las usamos para publicidad ni para entrenar modelos.</p>
+      <h2>8. Disponibilidad y cambios del servicio</h2>
+      <p>Podemos mejorar o sustituir los modelos y funciones. Si el servicio cesa definitivamente, te avisaremos con antelación y te devolveremos la parte proporcional de los créditos de pago no utilizados.</p>
+      <h2>9. Responsabilidad</h2>
+      <p>Salvo dolo o culpa grave, y sin perjuicio de los derechos que la ley reconoce a los consumidores, la responsabilidad del prestador se limita al importe pagado por el usuario en los 12 meses anteriores al hecho que la origine.</p>
+      <h2>10. Baja y suspensión</h2>
+      <p>Puedes eliminar tu cuenta en cualquier momento desde la aplicación; los créditos pendientes se pierden, sin perjuicio del derecho de desistimiento. Podemos suspender cuentas que incumplan estas condiciones, previa comunicación salvo en casos graves.</p>
+      <h2>11. Modificaciones</h2>
+      <p>Podemos actualizar estas condiciones. Los cambios relevantes se comunicarán con al menos 15 días de antelación. Los créditos ya comprados conservan las condiciones vigentes en el momento de la compra.</p>
+      <h2>12. Ley aplicable y jurisdicción</h2>
+      <p>Estas condiciones se rigen por la legislación española. Si eres consumidor, serán competentes los juzgados de tu domicilio.</p>` },
+
+    cookies: { title: "Política de cookies", body: `
+      <p>Este sitio solo usa cookies y almacenamiento local <b>técnicos o de preferencias solicitadas por ti</b>, que están exentos de consentimiento según el artículo 22.2 de la LSSI-CE. Por eso no mostramos un banner de cookies.</p>
+      <table>
+        <tr><th>Nombre</th><td><b>Finalidad · Tipo · Duración</b></td></tr>
+        <tr><th>sid (cookie)</th><td>Mantener tu sesión iniciada · Propia, técnica · 60 días o hasta cerrar sesión</td></tr>
+        <tr><th>lang (almacenamiento local)</th><td>Recordar el idioma que eliges · Propia, preferencia · Hasta que lo borres</td></tr>
+        <tr><th>ref (almacenamiento local)</th><td>Recordar el código de invitación hasta que te registres · Propia, técnica · Hasta que lo borres</td></tr>
+      </table>
+      <p>No usamos cookies de analítica, publicidad ni redes sociales. Las fuentes tipográficas se sirven desde nuestro propio servidor. Al pagar se te redirige a la página de pago de Stripe, que usa sus propias cookies necesarias para el pago y la prevención del fraude (consulta la política de cookies de Stripe).</p>
+      <p>Puedes eliminar las cookies y el almacenamiento local desde la configuración de tu navegador; si eliminas «sid», se cerrará tu sesión.</p>` },
+  },
+}),
+// =====================================================================
+en: (x) => ({
+  updated: "Last updated",
+  transNote: "This is an English translation for your convenience. The Spanish version prevails in case of discrepancy.",
+  tabs: { "aviso-legal": "Legal notice", privacidad: "Privacy", condiciones: "Terms", cookies: "Cookies" },
+  docs: {
+    "aviso-legal": { title: "Legal notice", body: `
+      <h2>1. Website owner</h2>
+      <p>In accordance with Article 10 of Spanish Law 34/2002 on Information Society Services and E-Commerce (LSSI-CE), the owner's details are:</p>
+      ${ownerTable(x, { name: "Owner", nif: "Tax ID (NIF)", address: "Address", phone: "Phone", registry: "Registry details", web: "Website" })}
+      <h2>2. Purpose</h2>
+      <p>This notice governs access to and use of the ${x.brand} website and app, an online service that edits real estate photos with artificial intelligence for real estate agents and professionals. Purchases are governed by the <a href="/condiciones">Terms of use and sale</a>.</p>
+      <h2>3. Use of the website</h2>
+      <p>You agree to use the website lawfully and in good faith, not to damage, overload or disable the service, not to try to access other people's accounts or data, and not to introduce malware.</p>
+      <h2>4. Intellectual property</h2>
+      <p>The software, design, texts, logos and other elements of the website belong to the owner or its licensors. Photos uploaded by users and the results belong to their owners, as set out in the Terms.</p>
+      <h2>5. Liability</h2>
+      <p>We work to keep the service available and working correctly but cannot guarantee it will be free of interruptions or errors. We are not responsible for third-party websites linked from this site.</p>
+      <h2>6. Data protection and cookies</h2>
+      <p>See the <a href="/privacidad">Privacy policy</a> and the <a href="/cookies">Cookie policy</a>.</p>
+      <h2>7. Governing law</h2>
+      <p>Spanish law applies. Consumers may bring proceedings before the courts of their place of residence.</p>` },
+    privacidad: { title: "Privacy policy", body: `
+      <h2>1. Data controller</h2>
+      ${ownerTable(x, { name: "Controller", nif: "Tax ID (NIF)", address: "Address", phone: "Phone", registry: "Registry details", web: "Website" })}
+      <p>Privacy questions: ${x.email}.</p>
+      <h2>2. Data we process</h2>
+      <ul>
+        <li><b>Account data:</b> email, password (stored with irreversible hashing), language, sign-up date and date of acceptance of the terms.</li>
+        <li><b>Photos and results:</b> the images you upload, a thumbnail for your history and links to the processed images.</li>
+        <li><b>Usage data:</b> credit balance, processing history and, if you were invited, who invited you.</li>
+        <li><b>Payment data:</b> card details are handled directly by Stripe; we only receive the amount, the pack and the payment reference.</li>
+        <li><b>Technical data:</b> IP address at sign-up and log-in, and server logs.</li>
+      </ul>
+      <p>Photos may show people, number plates or documents. Please avoid uploading third-party personal data or hide it before uploading.</p>
+      <h2>3. Purposes and legal bases</h2>
+      <table>
+        <tr><th>Purpose</th><td><b>Legal basis (GDPR)</b></td></tr>
+        <tr><th>Creating and managing your account and providing the service</th><td>Performance of a contract — Art. 6(1)(b)</td></tr>
+        <tr><th>Charging for packs, invoicing, accounting and tax obligations</th><td>Legal obligation — Art. 6(1)(c)</td></tr>
+        <tr><th>Security and prevention of fraud and abuse of the welcome gift and referral programme</th><td>Legitimate interest — Art. 6(1)(f)</td></tr>
+        <tr><th>Answering your questions</th><td>Contract or legitimate interest</td></tr>
+      </table>
+      <p>We do not sell your data, send advertising or make automated decisions with legal effects. We do not use your photos to train AI models.</p>
+      <h2>4. Recipients and processors</h2>
+      <ul>
+        <li><b>Railway Corporation</b> (USA): server and database hosting, located in the EU (Netherlands).</li>
+        <li><b>Features &amp; Labels, Inc. (fal.ai)</b> (USA): AI image processing, including Google models.</li>
+        <li><b>Stripe Payments Europe, Ltd.</b> (Ireland): payments and invoices; for some purposes such as fraud prevention Stripe acts as an independent controller.</li>
+      </ul>
+      <p>We may disclose data to public authorities and courts where required by law.</p>
+      <h2>5. International transfers</h2>
+      <p>Transfers to the USA rely on the EU-US Data Privacy Framework, where the provider is certified, or on the European Commission's Standard Contractual Clauses.</p>
+      <h2>6. Retention</h2>
+      <ul>
+        <li>Account data, thumbnails and history: while your account is active; you can delete any photo from your history at any time.</li>
+        <li>Processed images: hosted on fal.ai's delivery network via private, hard-to-guess links, retained under fal.ai's retention policy.</li>
+        <li>Payment and invoicing data: 6 years (Art. 30 Spanish Commercial Code) and as required by tax law.</li>
+        <li>Security data: only as long as needed to detect abuse.</li>
+      </ul>
+      <h2>7. Your rights</h2>
+      <p>You can exercise your rights of access, rectification, erasure, objection, restriction and portability by writing to ${x.email}. You can delete your account directly in the app (Account → “Delete account”). You can lodge a complaint with the Spanish Data Protection Agency (<a href="https://www.aepd.es" rel="noopener">www.aepd.es</a>).</p>
+      <h2>8. Security</h2>
+      <p>HTTPS encryption, irreversibly hashed passwords, protected session cookies and restricted data access.</p>
+      <h2>9. Minors</h2><p>The service is for professionals aged 18 or over.</p>
+      <h2>10. Changes</h2><p>We will notify you of material changes by email or in the app.</p>` },
+    condiciones: { title: "Terms of use and sale", body: `
+      <h2>1. Parties</h2>
+      <p>These terms govern the relationship between ${x.owner} (the “provider”) and the person who creates a ${x.brand} account (the “user”). By signing up you accept them. Version: ${escapeHtml(x.c.termsVersion || "")}.</p>
+      <h2>2. The service</h2>
+      <p>${x.brand} lets you upload real estate photos and get AI-edited versions: light and colour enhancement, virtual staging, object removal, sky replacement, twilight effect, upscaling and other edits. Results are generated automatically, may vary between attempts and may contain imperfections. You must review them before publishing.</p>
+      <h2>3. Account</h2>
+      <ul>
+        <li>You must be 18 or over and provide a valid email.</li>
+        <li>You are responsible for keeping your password safe and for activity on your account.</li>
+        <li>The welcome gift is limited to one per person. Multiple accounts or referral abuse may lead to suspension and cancellation of free credits.</li>
+      </ul>
+      <h2>4. Credits, prices and payment</h2>
+      <ul>
+        <li>Processing one photo costs 1 credit; 4K costs 2 credits. Upscaling is included.</li>
+        <li>Pack prices are shown in euros before purchase. ${x.vat ? "Prices include applicable VAT." : "Prices exclude VAT, which will be added where applicable."}</li>
+        <li>Payments are processed by Stripe. You will receive a confirmation and an invoice by email.</li>
+        <li>Credits do not expire while the service is active. They are non-transferable and not redeemable for cash, except as set out in sections 5 and 8.</li>
+        <li>If processing fails due to a technical error, the credit is refunded automatically. Each new attempt (“Another take”) uses credits.</li>
+        <li>Free credits (welcome and referrals) have no monetary value.</li>
+      </ul>
+      <h2>5. Right of withdrawal</h2>
+      <p>If you are a consumer, you may withdraw from a pack purchase within 14 calendar days. When buying, you expressly request that the service start immediately. If you withdraw, we will refund the amount proportional to the unused credits of that pack (Art. 108.3 of the Spanish Consumer Protection Act). Once all credits of a pack have been used, the service is fully performed.</p>
+      <p>To withdraw, email ${x.email} with your account email and the purchase, or use the model withdrawal form. We will refund within 14 days using the same payment method. We apply the same policy to business users.</p>
+      <h2>6. Acceptable use</h2>
+      <ul>
+        <li>Only upload photos you own or are authorised to use.</li>
+        <li>Do not upload unlawful images or images of people without their consent.</li>
+        <li>Edited images must not mislead buyers or tenants: do not hide real defects or alter structural elements, views or surfaces. Clearly state when an image has been virtually staged or altered. The app adds a “Virtually staged” label on download by default.</li>
+        <li>You are solely responsible for how you use and publish the images.</li>
+      </ul>
+      <h2>7. Ownership of images</h2>
+      <p>You keep all rights to your photos and results. You grant us only the licence needed to process, store and display them to you while you use the service. We do not use them for advertising or model training.</p>
+      <h2>8. Availability and changes</h2>
+      <p>We may improve or replace models and features. If the service is permanently discontinued, we will give advance notice and refund the proportional part of unused paid credits.</p>
+      <h2>9. Liability</h2>
+      <p>Except for wilful misconduct or gross negligence, and without prejudice to statutory consumer rights, the provider's liability is limited to the amount paid by the user in the 12 months before the event giving rise to it.</p>
+      <h2>10. Closing and suspension</h2>
+      <p>You can delete your account at any time in the app; remaining credits are forfeited, without prejudice to the right of withdrawal. We may suspend accounts that breach these terms, with prior notice except in serious cases.</p>
+      <h2>11. Changes</h2>
+      <p>Material changes will be notified at least 15 days in advance. Credits already purchased keep the terms in force at the time of purchase.</p>
+      <h2>12. Governing law</h2>
+      <p>Spanish law applies. Consumers may bring proceedings before the courts of their place of residence.</p>` },
+    cookies: { title: "Cookie policy", body: `
+      <p>This site only uses <b>technical cookies and local storage for preferences you request</b>, which are exempt from consent under Art. 22.2 LSSI-CE. That is why there is no cookie banner.</p>
+      <table>
+        <tr><th>Name</th><td><b>Purpose · Type · Duration</b></td></tr>
+        <tr><th>sid (cookie)</th><td>Keeps you logged in · First-party, technical · 60 days or until you log out</td></tr>
+        <tr><th>lang (local storage)</th><td>Remembers your language · First-party, preference · Until you clear it</td></tr>
+        <tr><th>ref (local storage)</th><td>Remembers an invitation code until you sign up · First-party, technical · Until you clear it</td></tr>
+      </table>
+      <p>No analytics, advertising or social media cookies. Fonts are served from our own server. Payment takes place on Stripe's checkout page, which uses its own cookies required for payment and fraud prevention.</p>
+      <p>You can delete cookies and local storage in your browser settings; deleting “sid” will log you out.</p>` },
+  },
+}),
+// =====================================================================
+ru: (x) => ({
+  updated: "Последнее обновление",
+  transNote: "Это перевод на русский для удобства. При расхождениях действует испанская версия.",
+  tabs: { "aviso-legal": "Юр. информация", privacidad: "Конфиденциальность", condiciones: "Условия", cookies: "Cookies" },
+  docs: {
+    "aviso-legal": { title: "Юридическая информация (Aviso legal)", body: `
+      <h2>1. Владелец сайта</h2>
+      <p>В соответствии со статьёй 10 Закона Испании 34/2002 об услугах информационного общества и электронной торговле (LSSI-CE) сообщаем данные владельца:</p>
+      ${ownerTable(x, { name: "Владелец", nif: "NIF", address: "Адрес", phone: "Телефон", registry: "Регистрационные данные", web: "Сайт" })}
+      <h2>2. Предмет</h2>
+      <p>Этот документ регулирует доступ к сайту и приложению ${x.brand} — онлайн-сервису обработки фото недвижимости с помощью ИИ для агентов и специалистов по недвижимости. Покупки регулируются <a href="/condiciones">Условиями использования и продажи</a>.</p>
+      <h2>3. Использование сайта</h2>
+      <p>Пользователь обязуется использовать сайт законно и добросовестно, не вредить сервису и не перегружать его, не пытаться получить доступ к чужим аккаунтам и данным и не загружать вредоносные программы.</p>
+      <h2>4. Интеллектуальная собственность</h2>
+      <p>Программы, дизайн, тексты, логотипы и другие элементы сайта принадлежат владельцу или его лицензиарам. Загруженные фото и результаты обработки принадлежат пользователям, как указано в Условиях.</p>
+      <h2>5. Ответственность</h2>
+      <p>Мы стараемся, чтобы сервис был доступен и работал корректно, но не можем гарантировать отсутствие перебоев и ошибок. Мы не отвечаем за сторонние сайты, на которые ведут ссылки.</p>
+      <h2>6. Персональные данные и cookies</h2>
+      <p>См. <a href="/privacidad">Политику конфиденциальности</a> и <a href="/cookies">Политику cookies</a>.</p>
+      <h2>7. Применимое право</h2>
+      <p>Применяется право Испании. Потребители могут обращаться в суд по месту своего жительства.</p>` },
+    privacidad: { title: "Политика конфиденциальности", body: `
+      <h2>1. Ответственный за обработку данных</h2>
+      ${ownerTable(x, { name: "Ответственный", nif: "NIF", address: "Адрес", phone: "Телефон", registry: "Регистрационные данные", web: "Сайт" })}
+      <p>Вопросы о персональных данных: ${x.email}.</p>
+      <h2>2. Какие данные мы обрабатываем</h2>
+      <ul>
+        <li><b>Данные аккаунта:</b> email, пароль (хранится в виде необратимого хеша), язык, дата регистрации и принятия условий.</li>
+        <li><b>Фото и результаты:</b> загруженные изображения, миниатюра для истории и ссылки на обработанные фото.</li>
+        <li><b>Данные использования:</b> баланс кредитов, история обработок и, если вас пригласили, кто пригласил.</li>
+        <li><b>Платёжные данные:</b> данные карты обрабатывает Stripe; мы получаем только сумму, пакет и номер платежа.</li>
+        <li><b>Технические данные:</b> IP-адрес при регистрации и входе, журналы сервера.</li>
+      </ul>
+      <p>На фото могут быть люди, номера машин или документы. Пожалуйста, не загружайте персональные данные третьих лиц или скрывайте их заранее.</p>
+      <h2>3. Цели и правовые основания</h2>
+      <table>
+        <tr><th>Цель</th><td><b>Основание (RGPD/GDPR)</b></td></tr>
+        <tr><th>Создание аккаунта и оказание услуги</th><td>Исполнение договора — ст. 6.1.b</td></tr>
+        <tr><th>Оплата, счета, бухгалтерия и налоги</th><td>Обязанность по закону — ст. 6.1.c</td></tr>
+        <tr><th>Безопасность, защита от мошенничества и злоупотребления бонусами</th><td>Законный интерес — ст. 6.1.f</td></tr>
+        <tr><th>Ответы на ваши вопросы</th><td>Договор или законный интерес</td></tr>
+      </table>
+      <p>Мы не продаём данные, не рассылаем рекламу и не принимаем автоматических решений с юридическими последствиями. Мы не используем ваши фото для обучения моделей ИИ.</p>
+      <h2>4. Получатели и обработчики</h2>
+      <ul>
+        <li><b>Railway Corporation</b> (США): хостинг сервера и базы данных; серверы находятся в ЕС (Нидерланды).</li>
+        <li><b>Features &amp; Labels, Inc. (fal.ai)</b> (США): обработка изображений моделями ИИ, в том числе моделями Google.</li>
+        <li><b>Stripe Payments Europe, Ltd.</b> (Ирландия): платежи и счета; для некоторых целей (например, защиты от мошенничества) Stripe выступает самостоятельным ответственным лицом.</li>
+      </ul>
+      <p>Данные могут передаваться государственным органам и судам, если этого требует закон.</p>
+      <h2>5. Международная передача</h2>
+      <p>Передача данных в США основана на рамочной программе EU-US Data Privacy Framework (если поставщик в ней участвует) или на Стандартных договорных положениях Еврокомиссии.</p>
+      <h2>6. Сроки хранения</h2>
+      <ul>
+        <li>Данные аккаунта, миниатюры и история — пока аккаунт активен; любое фото можно удалить из истории в любой момент.</li>
+        <li>Обработанные фото хранятся в сети доставки fal.ai по закрытым ссылкам, которые трудно угадать, — по правилам хранения fal.ai.</li>
+        <li>Данные об оплатах и счетах — 6 лет (ст. 30 Торгового кодекса Испании) и сроки налогового законодательства.</li>
+        <li>Данные безопасности — минимально необходимое время.</li>
+      </ul>
+      <h2>7. Ваши права</h2>
+      <p>Вы можете запросить доступ к данным, их исправление, удаление, ограничение обработки и переносимость, а также возразить против обработки, написав на ${x.email}. Аккаунт можно удалить в приложении (Аккаунт → «Удалить аккаунт»). Жалобу можно подать в Испанское агентство по защите данных (<a href="https://www.aepd.es" rel="noopener">www.aepd.es</a>).</p>
+      <h2>8. Безопасность</h2><p>HTTPS, необратимое хеширование паролей, защищённые cookies сессии, ограниченный доступ к данным.</p>
+      <h2>9. Несовершеннолетние</h2><p>Сервис предназначен для специалистов старше 18 лет.</p>
+      <h2>10. Изменения</h2><p>О существенных изменениях сообщим по email или в приложении.</p>` },
+    condiciones: { title: "Условия использования и продажи", body: `
+      <h2>1. Стороны</h2>
+      <p>Эти условия регулируют отношения между ${x.owner} («исполнитель») и лицом, создавшим аккаунт в ${x.brand} («пользователь»). Регистрируясь, вы их принимаете. Версия: ${escapeHtml(x.c.termsVersion || "")}.</p>
+      <h2>2. Услуга</h2>
+      <p>${x.brand} позволяет загружать фото недвижимости и получать версии, обработанные ИИ: улучшение света и цвета, виртуальную меблировку, удаление предметов, замену неба, вечерний эффект, апскейл и другие правки. Результаты создаются автоматически, могут отличаться от попытки к попытке и содержать неточности. Проверяйте их перед публикацией.</p>
+      <h2>3. Аккаунт</h2>
+      <ul>
+        <li>Вам должно быть 18 лет или больше, нужен действующий email.</li>
+        <li>Вы отвечаете за сохранность пароля и действия в аккаунте.</li>
+        <li>Приветственный бонус — один на человека. За несколько аккаунтов или злоупотребление приглашениями аккаунты могут быть заблокированы, а бесплатные кредиты аннулированы.</li>
+      </ul>
+      <h2>4. Кредиты, цены и оплата</h2>
+      <ul>
+        <li>Обработка одного фото — 1 кредит, в 4K — 2 кредита. Апскейл включён.</li>
+        <li>Цены пакетов указаны в евро до покупки. ${x.vat ? "Цены включают НДС (IVA)." : "Цены указаны без НДС (IVA), он добавляется, где применимо."}</li>
+        <li>Оплата проходит через Stripe. Подтверждение и счёт приходят на email.</li>
+        <li>Кредиты не сгорают, пока сервис работает. Их нельзя передать или обменять на деньги, кроме случаев из разделов 5 и 8.</li>
+        <li>Если обработка не удалась из-за технической ошибки, кредит возвращается автоматически. Каждая новая попытка («Ещё вариант») расходует кредиты.</li>
+        <li>Бесплатные кредиты (приветственные и за приглашения) не имеют денежной ценности.</li>
+      </ul>
+      <h2>5. Право на отказ (desistimiento)</h2>
+      <p>Если вы потребитель, вы можете отказаться от покупки пакета в течение 14 календарных дней. При покупке вы явно просите начать оказание услуги сразу. Поэтому при отказе мы вернём сумму пропорционально неиспользованным кредитам этого пакета (ст. 108.3 Закона Испании о защите прав потребителей). Если все кредиты пакета израсходованы, услуга считается оказанной полностью.</p>
+      <p>Чтобы отказаться, напишите на ${x.email}: укажите email аккаунта и покупку. Можно использовать типовую форму отказа. Возврат — в течение 14 дней тем же способом оплаты. Эти же правила действуют для профессиональных пользователей.</p>
+      <h2>6. Допустимое использование</h2>
+      <ul>
+        <li>Загружайте только фото, на которые у вас есть права или разрешение.</li>
+        <li>Не загружайте незаконные изображения и фото людей без их согласия.</li>
+        <li>Обработанные фото не должны вводить в заблуждение покупателей и арендаторов: не скрывайте реальные дефекты и не меняйте конструкцию, вид из окна или отделку. Ясно указывайте, что фото меблировано или изменено виртуально. По умолчанию приложение ставит пометку «Виртуальный стейджинг» при скачивании.</li>
+        <li>Вы полностью отвечаете за использование и публикацию изображений.</li>
+      </ul>
+      <h2>7. Права на изображения</h2>
+      <p>Все права на загруженные фото и результаты остаются у вас. Вы даёте нам только лицензию, необходимую для обработки, хранения и показа фото вам, пока вы пользуетесь сервисом. Мы не используем фото в рекламе и для обучения моделей.</p>
+      <h2>8. Доступность и изменения сервиса</h2>
+      <p>Мы можем улучшать или заменять модели и функции. Если сервис будет закрыт навсегда, мы заранее предупредим и вернём пропорциональную часть неиспользованных платных кредитов.</p>
+      <h2>9. Ответственность</h2>
+      <p>За исключением умысла и грубой неосторожности и без ущерба для прав потребителей по закону, ответственность исполнителя ограничена суммой, уплаченной пользователем за 12 месяцев до события.</p>
+      <h2>10. Удаление аккаунта и блокировка</h2>
+      <p>Вы можете удалить аккаунт в приложении в любой момент; оставшиеся кредиты при этом пропадают (право на отказ сохраняется). Мы можем заблокировать аккаунт за нарушение условий — с предварительным уведомлением, кроме серьёзных случаев.</p>
+      <h2>11. Изменения условий</h2>
+      <p>О существенных изменениях сообщим минимум за 15 дней. Для уже купленных кредитов действуют условия на момент покупки.</p>
+      <h2>12. Применимое право</h2>
+      <p>Применяется право Испании. Потребители могут обращаться в суд по месту своего жительства.</p>` },
+    cookies: { title: "Политика cookies", body: `
+      <p>Сайт использует только <b>технические cookies и локальное хранилище для выбранных вами настроек</b>. По ст. 22.2 LSSI-CE на них не нужно согласие, поэтому баннера cookies нет.</p>
+      <table>
+        <tr><th>Название</th><td><b>Назначение · Тип · Срок</b></td></tr>
+        <tr><th>sid (cookie)</th><td>Сохраняет вход в аккаунт · Собственная, техническая · 60 дней или до выхода</td></tr>
+        <tr><th>lang (локальное хранилище)</th><td>Запоминает язык · Собственная, настройка · Пока не удалите</td></tr>
+        <tr><th>ref (локальное хранилище)</th><td>Запоминает код приглашения до регистрации · Собственная, техническая · Пока не удалите</td></tr>
+      </table>
+      <p>Нет аналитики, рекламы и cookies соцсетей. Шрифты загружаются с нашего сервера. Оплата проходит на странице Stripe, которая использует собственные cookies, необходимые для платежа и защиты от мошенничества.</p>
+      <p>Cookies и локальное хранилище можно удалить в настройках браузера; при удалении «sid» вы выйдете из аккаунта.</p>` },
+  },
+}),
+};
+
+onLang(render);
+applyLang();
+loadConfig().then(render);
+</script>
+</body>
+</html>

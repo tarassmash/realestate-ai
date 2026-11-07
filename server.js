@@ -116,7 +116,9 @@ const routes = {
     refBonus: config.REF_BONUS,
     refWelcome: config.REF_WELCOME,
     payments: !!config.STRIPE_SECRET_KEY,
-    supportEmail: config.SUPPORT_EMAIL,
+    supportEmail: config.SUPPORT_EMAIL || config.LEGAL.email,
+    legal: config.LEGAL,
+    termsVersion: config.TERMS_VERSION,
   }),
 
   "POST /api/auth/register": async (req, res) => {
@@ -163,6 +165,24 @@ const routes = {
     if (!(await auth.verifyPassword(String(current || ""), u.pass_hash))) throw auth.httpErr(401, "bad_login");
     if (String(next || "").length < 8) throw auth.httpErr(400, "short_password");
     await db.q("UPDATE users SET pass_hash=$2 WHERE id=$1", [u.id, await auth.hashPassword(next)]);
+    return { ok: true };
+  },
+
+  // Право на удаление (ст. 17 RGPD): удаляем фото и сессии, анонимизируем аккаунт.
+  // Записи об оплатах сохраняются — их требует налоговое и торговое законодательство.
+  "POST /api/me/delete": async (req, res) => {
+    const u = await requireUser(req);
+    const { password } = await readJson(req, 2000);
+    if (!(await auth.verifyPassword(String(password || ""), u.pass_hash))) throw auth.httpErr(401, "bad_login");
+    await db.tx(async (c) => {
+      await c.query("DELETE FROM jobs WHERE user_id=$1", [u.id]);
+      await c.query("DELETE FROM sessions WHERE user_id=$1", [u.id]);
+      await c.query(
+        `UPDATE users SET email=$2, pass_hash='deleted', blocked=TRUE, credits=0, signup_ip=NULL, deleted_at=now() WHERE id=$1`,
+        [u.id, `deleted-${u.id}-${crypto.randomBytes(4).toString("hex")}@deleted.invalid`]
+      );
+    });
+    auth.clearSession(res, req);
     return { ok: true };
   },
 
@@ -263,7 +283,9 @@ async function handleDownload(req, res, query) {
 async function handleCheckout(req, res) {
   const u = await requireUser(req);
   if (!config.STRIPE_SECRET_KEY) throw auth.httpErr(503, "payments_off");
-  const { pack: packId } = await readJson(req, 1000);
+  const { pack: packId, consent } = await readJson(req, 1000);
+  // Явное согласие на немедленное начало услуги (ст. 103 TRLGDCU) — без него не продаём
+  if (consent !== true) throw auth.httpErr(400, "consent_required");
   const pack = config.PACKS.find((p) => p.id === packId);
   if (!pack) throw auth.httpErr(400, "bad_pack");
   const session = await stripe.createCheckout({ user: u, pack, baseUrl: baseUrl(req) });
@@ -276,9 +298,10 @@ async function fulfill(session) {
   if (!userId || !credits) return console.error("webhook: нет user_id/credits", session.id);
   const credited = await db.tx(async (c) => {
     const ins = await c.query(
-      `INSERT INTO payments(user_id, stripe_session, pack, credits, amount_cents, currency)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
-      [userId, session.id, session.metadata?.pack || "?", credits, session.amount_total || 0, session.currency || config.CURRENCY]
+      `INSERT INTO payments(user_id, stripe_session, pack, credits, amount_cents, currency, consent_at, terms_version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
+      [userId, session.id, session.metadata?.pack || "?", credits, session.amount_total || 0, session.currency || config.CURRENCY,
+       session.metadata?.consent_at || null, session.metadata?.terms_version || null]
     );
     if (!ins.rows.length) return false; // уже начислено (повторный вебхук)
     await db.addCredits(userId, credits, "purchase", session.id, c);
@@ -367,8 +390,13 @@ const MIME = {
   ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
+  ".woff2": "font/woff2",
 };
-const PAGES = { "/": "/index.html", "/app": "/app.html", "/admin": "/admin.html" };
+const PAGES = {
+  "/": "/index.html", "/app": "/app.html", "/admin": "/admin.html",
+  "/legal": "/legal.html", "/aviso-legal": "/legal.html", "/privacidad": "/legal.html",
+  "/condiciones": "/legal.html", "/cookies": "/legal.html",
+};
 
 function serveStatic(req, res, pathname) {
   const rel = PAGES[pathname] || pathname;
@@ -424,6 +452,8 @@ db.init()
       if (!config.FAL_KEY) console.log("⚠ FAL_KEY не задан — обработка фото недоступна");
       if (!config.STRIPE_SECRET_KEY) console.log("⚠ STRIPE_SECRET_KEY не задан — оплата выключена");
       if (!config.ADMIN_EMAILS.length) console.log("⚠ ADMIN_EMAILS не задан — админка недоступна");
+      const miss = ["name", "nif", "address", "email"].filter((k) => !config.LEGAL[k]);
+      if (miss.length) console.log("⚠ Не заполнены данные владельца для Aviso legal:", miss.map((k) => "LEGAL_" + k.toUpperCase()).join(", "));
     });
   })
   .catch((e) => {

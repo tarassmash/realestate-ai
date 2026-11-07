@@ -96,9 +96,11 @@ async function waitJob(c, id) {
     let r = await A("POST", "/api/auth/register", { email: "Agent@Test.com", password: "short", lang: "es" });
     assert.equal(r.data.error, "short_password");
     r = await A("POST", "/api/auth/register", { email: "agent@test.com", password: "password123", lang: "es" });
+    assert.equal(r.data.error, "terms_required");
+    r = await A("POST", "/api/auth/register", { email: "agent@test.com", password: "password123", acceptTerms: true, lang: "es" });
     assert.equal(r.status, 200); assert.equal(r.data.user.credits, 5);
     const refCode = r.data.user.refCode;
-    r = await A("POST", "/api/auth/register", { email: "agent@test.com", password: "password123" });
+    r = await A("POST", "/api/auth/register", { email: "agent@test.com", password: "password123", acceptTerms: true });
     assert.equal(r.data.error, "email_taken");
     console.log("✓ регистрация, 5 бесплатных кредитов");
 
@@ -129,17 +131,21 @@ async function waitJob(c, id) {
 
     // реферал: B приходит по ссылке A с другого IP
     const B = client("2.2.2.2");
-    r = await B("POST", "/api/auth/register", { email: "friend@test.com", password: "password123", ref: refCode });
+    r = await B("POST", "/api/auth/register", { email: "friend@test.com", password: "password123", acceptTerms: true, ref: refCode });
     assert.equal(r.data.user.credits, 8); // 5 + 3
     // самореферал с того же IP не даёт бонус
     const A2 = client("1.1.1.1");
-    r = await A2("POST", "/api/auth/register", { email: "fake@test.com", password: "password123", ref: refCode });
+    r = await A2("POST", "/api/auth/register", { email: "fake@test.com", password: "password123", acceptTerms: true, ref: refCode });
     assert.equal(r.data.user.credits, 5);
     console.log("✓ рефералка: +3 приглашённому, защита от самоприглашения");
 
     // оплата B
     r = await B("POST", "/api/checkout", { pack: "pro" });
-    assert.equal(r.status, 200); assert.ok(r.data.url.startsWith("https://checkout.stripe.com"));
+    assert.equal(r.data.error, "consent_required");
+    r = await B("POST", "/api/checkout", { pack: "pro", consent: true });
+    assert.equal(r.status, 200);
+    assert.ok(lastCheckout.includes("metadata[terms_version]"));
+    assert.ok(lastCheckout.includes("custom_text[submit][message]")); assert.ok(r.data.url.startsWith("https://checkout.stripe.com"));
     assert.ok(lastCheckout.includes("line_items[0][price_data][unit_amount]=2900"));
     const me = (await B("GET", "/api/me")).data.user;
     const event = JSON.stringify({
@@ -163,7 +169,7 @@ async function waitJob(c, id) {
     r = await A("GET", "/api/admin/stats");
     assert.equal(r.status, 403);
     const Boss = client("3.3.3.3");
-    await Boss("POST", "/api/auth/register", { email: "boss@test.com", password: "password123" });
+    await Boss("POST", "/api/auth/register", { email: "boss@test.com", password: "password123", acceptTerms: true });
     r = await Boss("GET", "/api/admin/stats");
     assert.equal(r.data.payments.revenue, 2900);
     r = await Boss("GET", "/api/admin/users?q=agent");
@@ -177,11 +183,25 @@ async function waitJob(c, id) {
     assert.equal(r.status, 401);
     r = await A("POST", "/api/auth/login", { email: "agent@test.com", password: "wrong-pass" });
     assert.equal(r.data.error, "bad_login");
-    r = await A("POST", "/api/auth/login", { email: "AGENT@test.com", password: "password123" });
+    r = await A("POST", "/api/auth/login", { email: "AGENT@test.com", password: "password123", acceptTerms: true });
     assert.equal(r.status, 200);
     console.log("✓ выход и вход");
 
-    for (const p of ["/", "/app", "/admin", "/common.js"]) {
+    // удаление аккаунта (RGPD ст. 17)
+    const D = client("4.4.4.4");
+    await D("POST", "/api/auth/register", { email: "bye@test.com", password: "password123", acceptTerms: true });
+    r = await D("POST", "/api/me/delete", { password: "wrong-pass" });
+    assert.equal(r.data.error, "bad_login");
+    r = await D("POST", "/api/me/delete", { password: "password123" });
+    assert.equal(r.status, 200);
+    assert.equal((await D("GET", "/api/me")).status, 401);
+    r = await D("POST", "/api/auth/login", { email: "bye@test.com", password: "password123" });
+    assert.equal(r.status, 401);
+    r = await D("POST", "/api/auth/register", { email: "bye@test.com", password: "password123", acceptTerms: true });
+    assert.equal(r.status, 200); // email освобождён
+    console.log("✓ согласия при регистрации и оплате, удаление аккаунта");
+
+    for (const p of ["/", "/app", "/admin", "/common.js", "/aviso-legal", "/privacidad", "/condiciones", "/cookies", "/fonts/manrope-latin-wght-normal.woff2"]) {
       const s = await fetch(`http://127.0.0.1:${PORT}${p}`);
       assert.equal(s.status, 200, p);
     }

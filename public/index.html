@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Realty Photo AI — AI photo editing for real estate agents</title>
 <meta name="description" content="Virtual staging, HDR enhancement, sky replacement and twilight photos for real estate listings in 30 seconds. 5 free photos." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/common.css" />
 <style>
   nav.links { display: flex; gap: 22px; }
@@ -208,7 +206,8 @@
   <button class="btn lg" id="ctaFinal"></button>
 </section>
 
-<footer><span id="year"></span> · <span id="footBrand"></span> · <span data-i18n="footer"></span> <span id="support"></span></footer>
+<footer><div><span id="year"></span> · <span id="footBrand"></span> · <span data-i18n="footer"></span> <span id="support"></span></div>
+  <div id="legalLinks" style="margin-top:8px"></div></footer>
 
 <script src="/common.js"></script>
 <script>
@@ -394,7 +393,8 @@ function render() {
   $("#faqList").innerHTML = t("faq").map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join("");
   $("#refText").textContent = t("refText", c.refBonus ?? 10, c.refWelcome ?? 3);
   $("#pricingBody").innerHTML = packsHTML({ withFree: true });
-  $("#footBrand").textContent = c.brand || "Realty Photo AI";
+  $("#footBrand").textContent = c.legal?.name ? `${c.legal.name}` : c.brand || "Realty Photo AI";
+  $("#legalLinks").innerHTML = legalLinksHTML();
   $("#support").innerHTML = c.supportEmail ? `· <a href="mailto:${escapeHtml(c.supportEmail)}">${escapeHtml(c.supportEmail)}</a>` : "";
 }
 onLang(render);

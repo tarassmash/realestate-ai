@@ -32,6 +32,11 @@ const I18N = {
     e_email_taken: "Этот email уже зарегистрирован — войдите", e_bad_login: "Неверный email или пароль", e_blocked: "Аккаунт заблокирован",
     e_no_credits: "Недостаточно кредитов — пополните баланс", e_not_configured: "Сервис временно недоступен", e_payments_off: "Оплата временно недоступна",
     e_bad_image: "Не удалось прочитать фото", e_too_large: "Файл слишком большой", e_auth_required: "Войдите в аккаунт", e_server_error: "Ошибка сервера, попробуйте ещё раз",
+    e_terms_required: "Нужно принять условия", e_consent_required: "Отметьте согласие, чтобы перейти к оплате",
+    acceptTerms: 'Я принимаю <a href="/condiciones" target="_blank">Условия</a> и <a href="/privacidad" target="_blank">Политику конфиденциальности</a>',
+    consentTitle: "Перед оплатой", consentText: (p, n) => `Пакет: ${n} фото — ${p}`,
+    consentCheck: 'Прошу начать оказание услуги сразу после оплаты и принимаю <a href="/condiciones" target="_blank">Условия</a>. Понимаю, что при отказе в течение 14 дней мне вернут деньги только за неиспользованные кредиты.',
+    toPay: "Перейти к оплате", legalNotice: "Юр. информация", privacy: "Конфиденциальность", termsShort: "Условия", cookies: "Cookies",
     e_network: "Нет связи с сервером", e_default: "Что-то пошло не так",
   },
   es: {
@@ -55,6 +60,11 @@ const I18N = {
     e_email_taken: "Este email ya está registrado — entra", e_bad_login: "Email o contraseña incorrectos", e_blocked: "Cuenta bloqueada",
     e_no_credits: "No tienes créditos suficientes — recarga tu saldo", e_not_configured: "Servicio no disponible temporalmente", e_payments_off: "Pago no disponible temporalmente",
     e_bad_image: "No se pudo leer la foto", e_too_large: "Archivo demasiado grande", e_auth_required: "Inicia sesión", e_server_error: "Error del servidor, inténtalo de nuevo",
+    e_terms_required: "Debes aceptar las condiciones", e_consent_required: "Marca la casilla para continuar al pago",
+    acceptTerms: 'Acepto las <a href="/condiciones" target="_blank">Condiciones</a> y la <a href="/privacidad" target="_blank">Política de privacidad</a>',
+    consentTitle: "Antes de pagar", consentText: (p, n) => `Paquete: ${n} fotos — ${p}`,
+    consentCheck: 'Solicito que el servicio comience inmediatamente tras el pago y acepto las <a href="/condiciones" target="_blank">Condiciones</a>. Entiendo que, si desisto en 14 días, solo se me reembolsarán los créditos no utilizados.',
+    toPay: "Continuar al pago", legalNotice: "Aviso legal", privacy: "Privacidad", termsShort: "Condiciones", cookies: "Cookies",
     e_network: "Sin conexión con el servidor", e_default: "Algo ha fallado",
   },
   en: {
@@ -78,6 +88,11 @@ const I18N = {
     e_email_taken: "This email is already registered — log in", e_bad_login: "Wrong email or password", e_blocked: "Account blocked",
     e_no_credits: "Not enough credits — please top up", e_not_configured: "Service temporarily unavailable", e_payments_off: "Payments temporarily unavailable",
     e_bad_image: "Couldn't read the photo", e_too_large: "File too large", e_auth_required: "Please log in", e_server_error: "Server error, please try again",
+    e_terms_required: "You must accept the terms", e_consent_required: "Tick the box to continue to payment",
+    acceptTerms: 'I accept the <a href="/condiciones" target="_blank">Terms</a> and the <a href="/privacidad" target="_blank">Privacy policy</a>',
+    consentTitle: "Before you pay", consentText: (p, n) => `Pack: ${n} photos — ${p}`,
+    consentCheck: 'I request that the service start immediately after payment and accept the <a href="/condiciones" target="_blank">Terms</a>. I understand that if I withdraw within 14 days, only unused credits will be refunded.',
+    toPay: "Continue to payment", legalNotice: "Legal notice", privacy: "Privacy", termsShort: "Terms", cookies: "Cookies",
     e_network: "Can't reach the server", e_default: "Something went wrong",
   },
 };
@@ -187,6 +202,8 @@ function ensureAuthDialog() {
       <label class="f" for="authPass" data-i18n="password"></label>
       <input type="password" id="authPass" minlength="8" required />
       <div class="fine" id="authPassHint" style="text-align:left;margin-top:6px"></div>
+      <label class="check" id="authTermsRow" style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="authAccept" style="margin-top:3px;accent-color:var(--accent)" /><span id="authAcceptTxt"></span></label>
       <div class="form-err" id="authErr"></div>
       <button class="btn full lg" id="authGo" style="margin-top:8px"></button>
       <div class="fine" id="authTerms"></div>
@@ -215,7 +232,9 @@ function renderAuth(mode) {
   $("#authPass").autocomplete = up ? "new-password" : "current-password";
   $("#authPassHint").textContent = up ? t("passwordHint") : "";
   $("#authGo").textContent = up ? t("createAccount") : t("signIn");
-  $("#authTerms").textContent = up ? t("terms") : "";
+  $("#authTerms").textContent = "";
+  $("#authTermsRow").hidden = !up;
+  $("#authAcceptTxt").innerHTML = t("acceptTerms");
   $("#authErr").textContent = "";
   $$("#authDlg [data-i18n]").forEach((n) => (n.textContent = t(n.dataset.i18n)));
 }
@@ -224,7 +243,8 @@ async function submitAuth(e) {
   const btn = $("#authGo");
   btn.disabled = true; $("#authErr").textContent = "";
   try {
-    const body = { email: $("#authEmail").value, password: $("#authPass").value, lang, ref: store.get("ref") || undefined };
+    if (authState.mode === "up" && !$("#authAccept").checked) throw Object.assign(new Error(), { code: "terms_required" });
+    const body = { email: $("#authEmail").value, password: $("#authPass").value, lang, ref: store.get("ref") || undefined, acceptTerms: $("#authAccept").checked };
     const r = await api(authState.mode === "up" ? "/api/auth/register" : "/api/auth/login", body);
     window.ME = r.user;
     if (r.user.lang && r.user.lang !== lang && authState.mode === "in") setLang(r.user.lang);
@@ -270,12 +290,47 @@ function packsHTML({ withFree = false, buyLabel } = {}) {
 async function buyPack(packId) {
   if (!window.ME) return openAuth("up", { onDone: () => buyPack(packId) });
   if (!CONFIG.payments) return toast(t("payOff") + (CONFIG.supportEmail ? " " + CONFIG.supportEmail : ""), 6000);
-  try {
-    const r = await api("/api/checkout", { pack: packId });
-    location.href = r.url;
-  } catch (e) {
-    toast(errText(e.code));
+  const pack = CONFIG.packs.find((p) => p.id === packId);
+  if (!pack) return;
+  // Явное согласие на немедленное начало услуги — отдельной галочкой (ст. 98.8, 103, 108.3 TRLGDCU)
+  let el = $("#consentDlg");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "dlg-bg"; el.id = "consentDlg";
+    el.innerHTML = `<div class="dlg"><button class="x" aria-label="close">×</button>
+      <h3 id="cTitle"></h3><p class="sub" id="cText"></p>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;margin:6px 0 4px">
+        <input type="checkbox" id="cCheck" style="margin-top:3px;accent-color:var(--accent)" /><span id="cCheckTxt"></span></label>
+      <div class="form-err" id="cErr"></div>
+      <button class="btn full lg" id="cGo"></button></div>`;
+    document.body.appendChild(el);
+    el.querySelector(".x").onclick = () => el.classList.remove("show");
+    el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("show"); });
   }
+  $("#cTitle").textContent = t("consentTitle");
+  $("#cText").textContent = t("consentText", money(pack.price), pack.credits);
+  $("#cCheckTxt").innerHTML = t("consentCheck");
+  $("#cGo").textContent = t("toPay");
+  $("#cErr").textContent = "";
+  $("#cCheck").checked = false;
+  $("#cGo").onclick = async () => {
+    if (!$("#cCheck").checked) return ($("#cErr").textContent = errText("consent_required"));
+    $("#cGo").disabled = true;
+    try {
+      const r = await api("/api/checkout", { pack: packId, consent: true });
+      location.href = r.url;
+    } catch (e) {
+      $("#cErr").textContent = errText(e.code);
+      $("#cGo").disabled = false;
+    }
+  };
+  $("#priceDlg")?.classList.remove("show");
+  el.classList.add("show");
+}
+
+function legalLinksHTML() {
+  return [["aviso-legal", "legalNotice"], ["privacidad", "privacy"], ["condiciones", "termsShort"], ["cookies", "cookies"]]
+    .map(([href, k]) => `<a href="/${href}">${t(k)}</a>`).join(" · ");
 }
 
 function ensurePricingDialog() {

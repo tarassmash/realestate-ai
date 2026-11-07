@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Realty Photo AI</title>
 <meta name="robots" content="noindex" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/common.css" />
 <style>
   .viewtabs { display: inline-flex; background: #f1eee8; border-radius: 10px; padding: 3px; }
@@ -232,6 +230,14 @@
       <a class="btn ghost sm" href="/admin" id="adminLink" hidden>Admin</a>
       <button class="btn ghost sm" id="logout" data-i18n="logout"></button>
     </div>
+    <details style="margin-top:16px;font-size:13px">
+      <summary style="cursor:pointer;color:var(--muted)" data-i18n="deleteAcc"></summary>
+      <p class="sub" style="margin:8px 0" data-i18n="deleteWarn"></p>
+      <input type="password" id="delPass" data-i18n-ph="curPass" autocomplete="current-password" />
+      <div class="form-err" id="delErr"></div>
+      <button class="btn sm" id="delGo" style="background:var(--warn)" data-i18n="deleteAcc"></button>
+    </details>
+    <div class="fine" id="accLegal" style="margin-top:16px"></div>
   </div>
 </div>
 
@@ -241,6 +247,7 @@
 <script>
 // ---------- строки приложения ----------
 Object.assign(PAGE_I18N.ru, {
+  deleteAcc: "Удалить аккаунт", deleteWarn: "Фото и история будут удалены, неиспользованные кредиты пропадут. Это действие нельзя отменить.",
   tabEdit: "Обработка", tabHistory: "История",
   s1: "1. Фото объекта", dropB: "Перетащите фото сюда", dropS: "или нажмите, чтобы выбрать · JPG, PNG, WebP · можно несколько",
   s2: "2. Что сделать", style: "Стиль интерьера", room: "Тип комнаты",
@@ -274,6 +281,7 @@ Object.assign(PAGE_I18N.ru, {
   p_upscale: ["🔍 Только апскейл", "Резкость и разрешение ×2"], p_custom: ["✍️ Своя задача", "Опишите, что изменить"],
 });
 Object.assign(PAGE_I18N.es, {
+  deleteAcc: "Eliminar cuenta", deleteWarn: "Se borrarán tus fotos e historial y perderás los créditos no usados. No se puede deshacer.",
   tabEdit: "Editar", tabHistory: "Historial",
   s1: "1. Fotos del inmueble", dropB: "Arrastra las fotos aquí", dropS: "o haz clic para elegir · JPG, PNG, WebP · varias a la vez",
   s2: "2. Qué hacer", style: "Estilo de interior", room: "Tipo de estancia",
@@ -307,6 +315,7 @@ Object.assign(PAGE_I18N.es, {
   p_upscale: ["🔍 Solo escalado", "Nitidez y resolución ×2"], p_custom: ["✍️ Tarea propia", "Describe qué cambiar"],
 });
 Object.assign(PAGE_I18N.en, {
+  deleteAcc: "Delete account", deleteWarn: "Your photos and history will be deleted and unused credits lost. This cannot be undone.",
   tabEdit: "Edit", tabHistory: "History",
   s1: "1. Property photos", dropB: "Drop photos here", dropS: "or click to choose · JPG, PNG, WebP · multiple allowed",
   s2: "2. What to do", style: "Interior style", room: "Room type",
@@ -690,7 +699,13 @@ function renderAccount() {
   $("#inviteText").textContent = t("inviteText", CONFIG?.refBonus ?? 10, CONFIG?.refWelcome ?? 3);
   $("#refInvited").textContent = REFS.invited; $("#refPaid").textContent = REFS.paid;
   $("#adminLink").hidden = !ME.isAdmin;
+  $("#accLegal").innerHTML = legalLinksHTML();
 }
+$("#delGo").onclick = async () => {
+  $("#delErr").textContent = "";
+  try { await api("/api/me/delete", { password: $("#delPass").value }); location.href = "/"; }
+  catch (e) { $("#delErr").textContent = errText(e.code); }
+};
 $("#avatar").onclick = () => { renderAccount(); $("#accDlg").classList.add("show"); };
 $("#accDlg").addEventListener("click", (e) => { if (e.target.id === "accDlg") $("#accDlg").classList.remove("show"); });
 $("#copyRef").onclick = async () => {
