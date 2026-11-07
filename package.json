@@ -1,13 +1,17 @@
 {
   "name": "realty-photo-ai",
-  "version": "1.0.0",
-  "description": "Улучшение фото недвижимости для агентов на fal.ai",
+  "version": "2.0.0",
+  "description": "SaaS для агентов недвижимости: улучшение фото на fal.ai с оплатой за пакеты",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/smoke.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
   },
   "license": "MIT"
 }

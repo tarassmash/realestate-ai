@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Админка — Realty Photo AI</title>
+<meta name="robots" content="noindex" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/common.css" />
+<style>
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .tile { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .tile b { display: block; font-size: 26px; letter-spacing: -.02em; }
+  .tile span { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { background: #faf9f6; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tr.blocked td { opacity: .5; }
+  td .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  td input.delta { width: 100px; padding: 6px 8px; font-size: 13px; }
+  .scroll { overflow-x: auto; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .bar input { max-width: 320px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/app" id="brand"></a>
+  <div class="hright"><a class="btn ghost sm" href="/app">← В приложение</a></div>
+</header>
+<div class="wrap">
+  <h1 style="margin:0 0 16px;letter-spacing:-.02em">Админка</h1>
+  <div class="tiles" id="tiles"></div>
+  <div class="bar">
+    <input type="text" id="q" placeholder="Поиск по email" />
+    <button class="btn sm" id="search">Найти</button>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Email</th><th>Кредиты</th><th>Обработок</th><th>Оплатил</th><th>Пригласил</th><th>Регистрация</th><th>Был</th><th>Действия</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+<script src="/common.js"></script>
+<script>
+lang = "ru";
+$("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
+const d = (s) => (s ? new Date(s).toLocaleDateString("ru-RU") : "—");
+let CUR = "eur";
+const eur = (c) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: CUR.toUpperCase() }).format(c / 100);
+
+async function loadStats() {
+  const s = await api("/api/admin/stats");
+  CUR = s.currency;
+  const tiles = [
+    [eur(s.payments.revenue), "выручка всего"],
+    [eur(s.payments.revenue30), "выручка за 30 дней"],
+    [s.payments.count, `оплат · ${s.payments.payers} платящих`],
+    [s.users.total, `пользователей · +${s.users.week} за неделю`],
+    [s.users.total ? ((s.payments.payers / s.users.total) * 100).toFixed(1) + "%" : "—", "конверсия в оплату"],
+    [s.jobs.done, `фото обработано · ${s.jobs.week} за неделю`],
+    [s.jobs.failed, "ошибок обработки (кредит возвращён)"],
+  ];
+  $("#tiles").innerHTML = tiles.map(([b, l]) => `<div class="tile"><b>${b}</b><span>${l}</span></div>`).join("");
+}
+async function loadUsers() {
+  const q = $("#q").value.trim();
+  const { users } = await api("/api/admin/users" + (q ? `?q=${encodeURIComponent(q)}` : ""));
+  $("#rows").innerHTML = users.map((u) => `
+    <tr class="${u.blocked ? "blocked" : ""}" data-id="${u.id}">
+      <td>${escapeHtml(u.email)}</td><td><b>${u.credits}</b></td><td>${u.jobs}</td><td>${u.paid ? eur(u.paid) : "—"}</td>
+      <td>${escapeHtml(u.referred_by || "—")}</td><td>${d(u.created_at)}</td><td>${d(u.last_seen_at)}</td>
+      <td><div class="acts">
+        <input type="number" placeholder="±кредиты" class="delta" />
+        <button class="btn sm" data-a="credits">Начислить</button>
+        <button class="btn ghost sm" data-a="pass">Новый пароль</button>
+        <button class="btn ghost sm" data-a="block">${u.blocked ? "Разблокировать" : "Блок"}</button>
+      </div></td>
+    </tr>`).join("") || `<tr><td colspan="8">Никого не найдено</td></tr>`;
+}
+$("#rows").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const tr = b.closest("tr"); const userId = Number(tr.dataset.id);
+  try {
+    if (b.dataset.a === "credits") {
+      const delta = Number(tr.querySelector(".delta").value);
+      if (!delta) return toast("Введите число, например 10 или -5");
+      await api("/api/admin/credits", { userId, delta }); toast("Готово");
+    }
+    if (b.dataset.a === "pass") {
+      const pw = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
+      await api("/api/admin/password", { userId, password: pw });
+      tr.querySelector(".acts").insertAdjacentHTML("beforeend", `<span style="font-size:13px">Пароль: <b>${pw}</b> — отправьте пользователю</span>`);
+      return;
+    }
+    if (b.dataset.a === "block") await api("/api/admin/block", { userId, blocked: !tr.classList.contains("blocked") });
+    loadUsers(); loadStats();
+  } catch (err) { toast(err.code); }
+});
+$("#search").onclick = loadUsers;
+$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadUsers(); });
+
+(async () => {
+  try { await loadStats(); await loadUsers(); }
+  catch (e) {
+    if (e.status === 401) location.href = "/app?login";
+    else document.querySelector(".wrap").innerHTML = "<h2>Нет доступа</h2><p>Добавьте свой email в переменную ADMIN_EMAILS на Railway.</p>";
+  }
+})();
+</script>
+</body>
+</html>
