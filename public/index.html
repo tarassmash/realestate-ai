@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Realty Photo AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f5f3ef;
+    --card: #ffffff;
+    --ink: #1d1f1e;
+    --muted: #6d716e;
+    --line: #e4e0d8;
+    --accent: #1f5d4c;
+    --accent-2: #2f7d67;
+    --accent-soft: #e5efe9;
+    --warn: #b4532a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; font-family: "Manrope", system-ui, sans-serif; color: var(--ink);
+    background: var(--bg); font-size: 15px; line-height: 1.45;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 28px; border-bottom: 1px solid var(--line); background: var(--card);
+    position: sticky; top: 0; z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+  .brand svg { width: 30px; height: 30px; }
+  .brand small { font-weight: 500; color: var(--muted); font-size: 13px; margin-left: 4px; }
+  .keybox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .keybox input { width: 260px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9c4ba; display: inline-block; }
+  .dot.ok { background: #3aa57a; }
+
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 24px; padding: 24px 28px 60px; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 16px; } header { padding: 14px 16px; flex-wrap: wrap; } .keybox input { width: 200px; } }
+
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .side { display: flex; flex-direction: column; gap: 18px; align-self: start; position: sticky; top: 88px; }
+  @media (max-width: 960px) { .side { position: static; } }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+
+  .drop {
+    border: 2px dashed #cfc9bd; border-radius: 12px; padding: 22px 14px; text-align: center; cursor: pointer;
+    transition: .15s; background: #faf9f6;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .drop span { color: var(--muted); font-size: 13px; }
+  .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .thumbs div { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #eee; }
+  .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumbs button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; cursor: pointer; line-height: 20px; padding: 0; }
+
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .preset {
+    text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 10px 11px;
+    cursor: pointer; font: inherit; color: inherit; transition: .12s;
+  }
+  .preset:hover { border-color: #bdb6a8; }
+  .preset.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .preset .t { font-weight: 700; font-size: 14px; display: flex; gap: 6px; align-items: center; }
+  .preset .d { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  label.f { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+  select, input[type=text], input[type=password], textarea {
+    width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--line);
+    border-radius: 9px; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 92px; resize: vertical; font-size: 13px; }
+  select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; gap: 9px; align-items: flex-start; margin-top: 12px; font-size: 14px; cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .check small { display: block; color: var(--muted); font-size: 12px; }
+  .link { background: none; border: 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; padding: 0; margin-top: 10px; font-weight: 600; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px;
+    background: var(--accent); color: #fff; font: inherit; font-weight: 700; padding: 12px 18px; cursor: pointer; transition: .12s;
+  }
+  .btn:hover { background: var(--accent-2); }
+  .btn:disabled { background: #a9b8b2; cursor: not-allowed; }
+  .btn.full { width: 100%; font-size: 16px; padding: 14px; }
+  .btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); font-weight: 600; padding: 8px 12px; font-size: 13px; }
+  .btn.ghost:hover { border-color: #bdb6a8; background: #faf9f6; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
+
+  .results-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .results-head h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+  .results-head p { margin: 4px 0 0; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .ba { position: relative; aspect-ratio: 3/2; background: #e9e6df; overflow: hidden; user-select: none; }
+  .ba img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  .ba .before { clip-path: inset(0 50% 0 0); }
+  .ba .bar { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,.35); pointer-events: none; }
+  .ba .bar::after { content: "⟷"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 34px; height: 34px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 15px; color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .ba input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+  .tag { position: absolute; top: 10px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: rgba(0,0,0,.55); color: #fff; letter-spacing: .04em; text-transform: uppercase; pointer-events: none; }
+  .tag.l { left: 10px; } .tag.r { right: 10px; }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(245,243,239,.55); backdrop-filter: blur(2px); }
+  .overlay .box { background: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .spin { width: 18px; height: 18px; border: 2.5px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 14px; flex-wrap: wrap; }
+  .meta .name { font-weight: 700; font-size: 14px; }
+  .meta .sub { font-size: 12px; color: var(--muted); }
+  .meta .err { font-size: 12px; color: var(--warn); max-width: 100%; word-break: break-word; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .empty { text-align: center; padding: 70px 20px; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); background: #faf9f6; }
+  .empty svg { width: 56px; height: 56px; opacity: .55; margin-bottom: 10px; }
+  .empty b { display: block; color: var(--ink); font-size: 17px; margin-bottom: 6px; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 10px; font-size: 14px; opacity: 0; transition: .2s; pointer-events: none; z-index: 20; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: none; place-items: center; z-index: 30; padding: 20px; }
+  .modal-bg.show { display: grid; }
+  .modal-bg .ba { width: min(1400px, 94vw); aspect-ratio: auto; height: 86vh; background: #111; border-radius: 10px; }
+  .modal-bg .close { position: absolute; top: 14px; right: 18px; color: #fff; font-size: 28px; background: none; border: 0; cursor: pointer; }
+  .langs { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .langs button { border: 0; background: #fff; font: inherit; font-size: 12px; font-weight: 700; padding: 7px 10px; cursor: pointer; color: var(--muted); }
+  .langs button.on { background: var(--accent); color: #fff; }
+  .hright { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#1f5d4c"/><path d="M7 16.5 16 9l9 7.5V24a1 1 0 0 1-1 1h-5v-5h-6v5H8a1 1 0 0 1-1-1v-7.5Z" fill="#fff"/><circle cx="23.5" cy="8.5" r="2.5" fill="#f2c14e"/></svg>
+    Realty Photo AI <small data-i18n="brandSub"></small>
+  </div>
+  <div class="hright">
+    <div class="keybox" id="keybox">
+      <span class="dot" id="keydot"></span>
+      <span id="keylabel" data-i18n="keyChecking"></span>
+    </div>
+    <div class="langs" id="langs">
+      <button data-lang="ru">RU</button><button data-lang="es">ES</button><button data-lang="en">EN</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <aside class="side">
+    <section class="panel">
+      <h2 data-i18n="s1"></h2>
+      <div class="drop" id="drop">
+        <b data-i18n="dropB"></b>
+        <span data-i18n="dropS"></span>
+        <input type="file" id="file" accept="image/*" multiple hidden />
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </section>
+
+    <section class="panel">
+      <h2 data-i18n="s2"></h2>
+      <div class="presets" id="presets"></div>
+
+      <div id="styleWrap" hidden>
+        <label class="f" for="style" data-i18n="style"></label>
+        <select id="style">
+          <option data-i18n="st_scandi" value="Scandinavian: light oak wood, white and beige textiles, cozy minimal decor"></option>
+          <option data-i18n="st_modern" value="modern contemporary: clean lines, neutral palette with warm accents, designer lighting"></option>
+          <option data-i18n="st_min" value="minimalist: very few pieces, calm neutral tones, uncluttered"></option>
+          <option data-i18n="st_loft" value="industrial loft: leather, dark metal, warm wood, Edison lamps"></option>
+          <option data-i18n="st_classic" value="classic elegant: upholstered furniture, soft patterns, brass details"></option>
+          <option data-i18n="st_med" value="Mediterranean: natural linen, rattan, terracotta, olive greens"></option>
+          <option data-i18n="st_lux" value="luxury premium: high-end designer furniture, marble, velvet, statement chandelier"></option>
+        </select>
+        <label class="f" for="room" data-i18n="room"></label>
+        <select id="room">
+          <option data-i18n="r_auto" value="the appropriate room type"></option>
+          <option data-i18n="r_living" value="a living room"></option>
+          <option data-i18n="r_bed" value="a bedroom"></option>
+          <option data-i18n="r_kitchen" value="a kitchen with dining area"></option>
+          <option data-i18n="r_office" value="a home office"></option>
+          <option data-i18n="r_kids" value="a kids room"></option>
+          <option data-i18n="r_dining" value="a dining room"></option>
+          <option data-i18n="r_terrace" value="a terrace / balcony with outdoor furniture"></option>
+        </select>
+      </div>
+
+      <div id="customWrap" hidden>
+        <label class="f" for="custom" data-i18n="customL"></label>
+        <textarea id="custom" data-i18n-ph="customPh"></textarea>
+      </div>
+
+      <button class="link" id="togglePrompt"></button>
+      <textarea id="promptView" hidden></textarea>
+    </section>
+
+    <section class="panel">
+      <h2 data-i18n="s3"></h2>
+      <div class="row">
+        <div>
+          <label class="f" for="model" style="margin-top:0" data-i18n="model"></label>
+          <select id="model">
+            <option value="fal-ai/nano-banana-pro/edit" data-i18n="m_pro"></option>
+            <option value="fal-ai/nano-banana/edit" data-i18n="m_std"></option>
+          </select>
+        </div>
+        <div>
+          <label class="f" for="res" style="margin-top:0" data-i18n="res"></label>
+          <select id="res">
+            <option value="1K">1K</option>
+            <option value="2K" selected>2K</option>
+            <option value="4K">4K</option>
+          </select>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="upscale" />
+        <span><span data-i18n="upscale"></span><small data-i18n="upscaleS"></small></span></label>
+      <label class="check"><input type="checkbox" id="mark" checked />
+        <span><span data-i18n="mark"></span><small data-i18n="markS"></small></span></label>
+    </section>
+
+    <button class="btn full" id="run" disabled></button>
+    <div class="hint" id="runHint"></div>
+  </aside>
+
+  <section>
+    <div class="results-head">
+      <div>
+        <h1 data-i18n="results"></h1>
+        <p data-i18n="resultsP"></p>
+      </div>
+      <button class="btn ghost" id="dlAll" hidden data-i18n="dlAll"></button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg>
+      <b data-i18n="emptyB"></b>
+      <span data-i18n="emptyP"></span>
+    </div>
+  </section>
+</main>
+
+<div class="modal-bg" id="modal"><button class="close" id="modalClose">×</button><div id="modalBody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+// ---------- Переводы / Traducciones / Translations ----------
+const I18N = {
+  ru: {
+    brandSub: "на fal.ai", keyChecking: "Проверяю ключ…", keyOk: "fal.ai подключён", keyPh: "Вставьте FAL_KEY",
+    keySaved: "Ключ сохранён в этом браузере", keyRemoved: "Ключ удалён",
+    s1: "1. Фото объекта", dropB: "Перетащите фото сюда", dropS: "или нажмите, чтобы выбрать · JPG, PNG, WebP · можно несколько",
+    s2: "2. Что сделать", style: "Стиль интерьера", room: "Тип комнаты",
+    st_scandi: "Скандинавский", st_modern: "Современный", st_min: "Минимализм", st_loft: "Лофт", st_classic: "Классика", st_med: "Средиземноморский", st_lux: "Премиум",
+    r_auto: "Определить автоматически", r_living: "Гостиная", r_bed: "Спальня", r_kitchen: "Кухня-столовая", r_office: "Кабинет", r_kids: "Детская", r_dining: "Столовая", r_terrace: "Терраса / балкон",
+    customL: "Ваша инструкция (на любом языке)", customPh: "Например: сделай стены светло-серыми, убери машину у подъезда",
+    showPrompt: "Показать промпт ▾", hidePrompt: "Скрыть промпт ▴",
+    s3: "3. Качество", model: "Модель", m_pro: "Pro — лучшее качество", m_std: "Стандарт — быстрее, дешевле", res: "Разрешение",
+    upscale: "Апскейл ×2 после обработки", upscaleS: "SeedVR2 — больше деталей для печати и крупных экранов",
+    mark: "Помечать «Виртуальный стейджинг»", markS: "Надпись в углу при скачивании — для честных объявлений",
+    run: "Обработать", runN: (n) => `Обработать (${n} фото)`,
+    hintKey: "Вставьте ключ fal.ai вверху справа", hintAdd: "Добавьте хотя бы одно фото", hintPro: "≈ 20–60 сек на фото", hintStd: "≈ 10–20 сек на фото",
+    results: "Результаты", resultsP: "Двигайте ползунок, чтобы сравнить «до» и «после». Клик по ⤢ — на весь экран.",
+    dlAll: "Скачать все", emptyB: "Здесь появятся улучшенные фото", emptyP: "Загрузите снимки слева, выберите задачу и нажмите «Обработать».",
+    st_wait: "Ожидание…", st_send: "Отправка…", st_queue: (p) => `В очереди${p != null ? ` (#${p + 1})` : ""}…`, st_proc: (s) => `Обработка… ${s} с`,
+    st_up: "Апскейл…", st_done: "Готово", st_err: "Ошибка",
+    e_open: (n) => `Не удалось открыть ${n}`, e_noimg: "Модель не вернула изображение", e_long: "Слишком долго, попробуйте ещё раз", e_req: "Ошибка запроса",
+    before: "До", after: "После", full: "На весь экран", dl: "Скачать", again: "Ещё вариант", retry: "Повторить", del: "Удалить", plusUp: " + апскейл", remove: "Убрать",
+    watermark: "Виртуальный стейджинг · изображение изменено",
+    p_enhance: ["Авто‑улучшение", "Свет, HDR, баланс белого, вертикали"],
+    p_staging: ["Виртуальный стейджинг", "Расставить мебель в пустой комнате"],
+    p_declutter: ["Убрать хлам", "Личные вещи, провода, мусор"],
+    p_empty: ["Пустая комната", "Убрать всю мебель"],
+    p_sky: ["Замена неба", "Голубое небо, солнечный день"],
+    p_twilight: ["Вечерняя съёмка", "Сумерки, тёплый свет в окнах"],
+    p_lawn: ["Благоустройство", "Зелёный газон, чистый двор"],
+    p_refresh: ["Освежить ремонт", "Покраска стен, чистые поверхности"],
+    p_upscale: ["Только апскейл", "Повысить резкость и разрешение"],
+    p_custom: ["Своя задача", "Опишите, что изменить"],
+  },
+  es: {
+    brandSub: "con fal.ai", keyChecking: "Comprobando clave…", keyOk: "fal.ai conectado", keyPh: "Pega tu FAL_KEY",
+    keySaved: "Clave guardada en este navegador", keyRemoved: "Clave eliminada",
+    s1: "1. Fotos del inmueble", dropB: "Arrastra las fotos aquí", dropS: "o haz clic para elegir · JPG, PNG, WebP · varias a la vez",
+    s2: "2. Qué hacer", style: "Estilo de interior", room: "Tipo de estancia",
+    st_scandi: "Nórdico", st_modern: "Moderno", st_min: "Minimalista", st_loft: "Industrial / loft", st_classic: "Clásico", st_med: "Mediterráneo", st_lux: "Lujo",
+    r_auto: "Detectar automáticamente", r_living: "Salón", r_bed: "Dormitorio", r_kitchen: "Cocina-comedor", r_office: "Despacho", r_kids: "Habitación infantil", r_dining: "Comedor", r_terrace: "Terraza / balcón",
+    customL: "Tu instrucción (en cualquier idioma)", customPh: "Por ejemplo: pinta las paredes de gris claro, quita el coche de la entrada",
+    showPrompt: "Ver prompt ▾", hidePrompt: "Ocultar prompt ▴",
+    s3: "3. Calidad", model: "Modelo", m_pro: "Pro — máxima calidad", m_std: "Estándar — más rápido y barato", res: "Resolución",
+    upscale: "Escalado ×2 tras procesar", upscaleS: "SeedVR2 — más detalle para impresión y pantallas grandes",
+    mark: "Marcar «Amueblado virtual»", markS: "Etiqueta en la esquina al descargar — anuncios transparentes",
+    run: "Procesar", runN: (n) => `Procesar (${n} ${n === 1 ? "foto" : "fotos"})`,
+    hintKey: "Pega tu clave de fal.ai arriba a la derecha", hintAdd: "Añade al menos una foto", hintPro: "≈ 20–60 s por foto", hintStd: "≈ 10–20 s por foto",
+    results: "Resultados", resultsP: "Mueve el control para comparar «antes» y «después». Pulsa ⤢ para pantalla completa.",
+    dlAll: "Descargar todas", emptyB: "Aquí aparecerán las fotos mejoradas", emptyP: "Sube las fotos a la izquierda, elige una tarea y pulsa «Procesar».",
+    st_wait: "En espera…", st_send: "Enviando…", st_queue: (p) => `En cola${p != null ? ` (#${p + 1})` : ""}…`, st_proc: (s) => `Procesando… ${s} s`,
+    st_up: "Escalando…", st_done: "Listo", st_err: "Error",
+    e_open: (n) => `No se pudo abrir ${n}`, e_noimg: "El modelo no devolvió ninguna imagen", e_long: "Ha tardado demasiado, inténtalo de nuevo", e_req: "Error en la solicitud",
+    before: "Antes", after: "Después", full: "Pantalla completa", dl: "Descargar", again: "Otra versión", retry: "Reintentar", del: "Eliminar", plusUp: " + escalado", remove: "Quitar",
+    watermark: "Amueblado virtual · imagen modificada",
+    p_enhance: ["Mejora automática", "Luz, HDR, balance de blancos, verticales"],
+    p_staging: ["Home staging virtual", "Amueblar una estancia vacía"],
+    p_declutter: ["Despejar", "Objetos personales, cables, basura"],
+    p_empty: ["Estancia vacía", "Quitar todos los muebles"],
+    p_sky: ["Cambiar cielo", "Cielo azul, día soleado"],
+    p_twilight: ["Foto al atardecer", "Crepúsculo, luz cálida en ventanas"],
+    p_lawn: ["Jardín", "Césped verde, patio limpio"],
+    p_refresh: ["Renovar", "Paredes pintadas, superficies limpias"],
+    p_upscale: ["Solo escalado", "Más nitidez y resolución"],
+    p_custom: ["Tarea propia", "Describe qué cambiar"],
+  },
+  en: {
+    brandSub: "on fal.ai", keyChecking: "Checking key…", keyOk: "fal.ai connected", keyPh: "Paste your FAL_KEY",
+    keySaved: "Key saved in this browser", keyRemoved: "Key removed",
+    s1: "1. Property photos", dropB: "Drop photos here", dropS: "or click to choose · JPG, PNG, WebP · multiple allowed",
+    s2: "2. What to do", style: "Interior style", room: "Room type",
+    st_scandi: "Scandinavian", st_modern: "Modern", st_min: "Minimalist", st_loft: "Industrial loft", st_classic: "Classic", st_med: "Mediterranean", st_lux: "Luxury",
+    r_auto: "Detect automatically", r_living: "Living room", r_bed: "Bedroom", r_kitchen: "Kitchen & dining", r_office: "Home office", r_kids: "Kids room", r_dining: "Dining room", r_terrace: "Terrace / balcony",
+    customL: "Your instruction (any language)", customPh: "e.g. paint the walls light grey, remove the car from the driveway",
+    showPrompt: "Show prompt ▾", hidePrompt: "Hide prompt ▴",
+    s3: "3. Quality", model: "Model", m_pro: "Pro — best quality", m_std: "Standard — faster, cheaper", res: "Resolution",
+    upscale: "Upscale ×2 after editing", upscaleS: "SeedVR2 — more detail for print and large screens",
+    mark: "Label as “Virtually staged”", markS: "Corner label on download — for honest listings",
+    run: "Process", runN: (n) => `Process (${n} ${n === 1 ? "photo" : "photos"})`,
+    hintKey: "Paste your fal.ai key at the top right", hintAdd: "Add at least one photo", hintPro: "≈ 20–60 s per photo", hintStd: "≈ 10–20 s per photo",
+    results: "Results", resultsP: "Drag the slider to compare before and after. Click ⤢ for full screen.",
+    dlAll: "Download all", emptyB: "Your enhanced photos will appear here", emptyP: "Upload photos on the left, pick a task and press “Process”.",
+    st_wait: "Waiting…", st_send: "Sending…", st_queue: (p) => `In queue${p != null ? ` (#${p + 1})` : ""}…`, st_proc: (s) => `Processing… ${s} s`,
+    st_up: "Upscaling…", st_done: "Done", st_err: "Error",
+    e_open: (n) => `Couldn't open ${n}`, e_noimg: "The model returned no image", e_long: "Took too long, please try again", e_req: "Request failed",
+    before: "Before", after: "After", full: "Full screen", dl: "Download", again: "Another take", retry: "Retry", del: "Delete", plusUp: " + upscale", remove: "Remove",
+    watermark: "Virtually staged · image altered",
+    p_enhance: ["Auto enhance", "Light, HDR, white balance, verticals"],
+    p_staging: ["Virtual staging", "Furnish an empty room"],
+    p_declutter: ["Declutter", "Personal items, cables, trash"],
+    p_empty: ["Empty room", "Remove all furniture"],
+    p_sky: ["Sky replacement", "Blue sky, sunny day"],
+    p_twilight: ["Twilight shot", "Dusk sky, warm window glow"],
+    p_lawn: ["Landscaping", "Green lawn, tidy yard"],
+    p_refresh: ["Refresh interior", "Fresh paint, clean surfaces"],
+    p_upscale: ["Upscale only", "Sharper, higher resolution"],
+    p_custom: ["Custom task", "Describe what to change"],
+  },
+};
+const LANGS = Object.keys(I18N);
+let lang = store.get("lang") || (navigator.language || "en").slice(0, 2);
+if (!LANGS.includes(lang)) lang = "en";
+const t = (k, ...a) => { const v = I18N[lang][k] ?? I18N.en[k] ?? k; return typeof v === "function" ? v(...a) : v; };
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => (el.placeholder = t(el.dataset.i18nPh)));
+  document.querySelectorAll("#langs button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  const ki = $("#keyin"); if (ki) ki.placeholder = t("keyPh");
+  if (serverKey) $("#keylabel").textContent = t("keyOk");
+  $("#togglePrompt").textContent = $("#promptView").hidden ? t("showPrompt") : t("hidePrompt");
+  renderPresets(); renderThumbs(); updateRun();
+  jobs.forEach(updateCard);
+}
+document.querySelectorAll("#langs button").forEach((b) => (b.onclick = () => { lang = b.dataset.lang; store.set("lang", lang); applyLang(); }));
+
+// ---------- Пресеты ----------
+const BASE = "This is a real estate listing photo. Keep the exact same room layout, architecture, walls, ceiling, floor, windows, doors, camera angle and perspective. Do not add or remove structural elements and do not change the view through the windows unless asked. Output a photorealistic, professional real estate photograph.";
+
+const PRESETS = [
+  { id: "enhance", icon: "✨",
+    p: () => `${BASE} Professionally retouch it: bright, natural, even lighting; balanced HDR exposure so window views are visible and not blown out; accurate neutral white balance (remove yellow or blue color casts); straighten converging vertical lines; crisp detail; remove noise. Do not move, add or remove any furniture or objects.` },
+  { id: "staging", icon: "🛋️", staging: true,
+    p: () => `${BASE} Virtually stage this space as ${$("#room").value} with tasteful furniture and decor in ${$("#style").value} style. Realistic scale, contact shadows and reflections matching the existing light direction. Keep floors, walls, windows and built-in fixtures exactly unchanged. Bright, inviting, magazine-quality listing photo.` },
+  { id: "declutter", icon: "🧹", staging: true,
+    p: () => `${BASE} Declutter the space: remove personal items, cables, toiletries, papers, fridge magnets, clothes, bags, shoes, toys, dishes, trash, family photos and small loose objects. Keep the main furniture in place. Leave clean, tidy surfaces.` },
+  { id: "empty", icon: "⬜", staging: true,
+    p: () => `${BASE} Remove all movable furniture, rugs, decor and objects, leaving a clean, empty room with the bare floor, walls, windows, radiators, sockets and built-in fixtures intact. Fill removed areas with matching floor and wall texture.` },
+  { id: "sky", icon: "☀️", staging: true,
+    p: () => `${BASE} Replace the sky with a clear, bright blue sky with a few soft white clouds, and adjust the exterior lighting to sunny daylight consistent with the new sky. Keep the building and surroundings unchanged.` },
+  { id: "twilight", icon: "🌆", staging: true,
+    p: () => `${BASE} Convert this exterior photo into a professional dusk twilight shot: deep blue to warm orange sunset sky, warm glowing interior lights in every window, soft exterior and landscape lighting, gentle reflections. Keep the building unchanged.` },
+  { id: "lawn", icon: "🌿", staging: true,
+    p: () => `${BASE} Make the lawn and landscaping lush, green and well maintained; tidy the yard and walkways; remove fallen leaves, debris, hoses, trash bins and parked construction items. Keep the building unchanged.` },
+  { id: "refresh", icon: "🎨", staging: true,
+    p: () => `${BASE} Make the interior look freshly renovated: walls repainted in a clean warm white, remove stains, scuffs and cracks, clean and polish floors, tiles and surfaces. Keep the same materials, layout and furniture.` },
+  { id: "upscale", icon: "🔍", upscaleOnly: true, p: () => "" },
+  { id: "custom", icon: "✍️", staging: true,
+    p: () => `${BASE} Follow this instruction (it may be in any language): ${$("#custom").value.trim() || "Improve the photo."}` },
+];
+let preset = PRESETS[0];
+const pTitle = (pr) => t("p_" + pr.id)[0];
+
+function renderPresets() {
+  $("#presets").innerHTML = "";
+  for (const pr of PRESETS) {
+    const [title, desc] = t("p_" + pr.id);
+    const b = document.createElement("button");
+    b.className = "preset" + (pr === preset ? " active" : "");
+    b.innerHTML = `<div class="t">${pr.icon} ${title}</div><div class="d">${desc}</div>`;
+    b.onclick = () => { preset = pr; renderPresets(); syncPresetUI(); };
+    $("#presets").appendChild(b);
+  }
+}
+let promptEdited = false;
+function syncPresetUI() {
+  $("#styleWrap").hidden = preset.id !== "staging";
+  $("#customWrap").hidden = preset.id !== "custom";
+  $("#togglePrompt").hidden = !!preset.upscaleOnly;
+  if (preset.upscaleOnly) { $("#promptView").hidden = true; $("#togglePrompt").textContent = t("showPrompt"); }
+  $("#promptView").value = preset.p();
+  promptEdited = false;
+}
+$("#promptView").addEventListener("input", () => (promptEdited = true));
+["#style", "#room", "#custom"].forEach((s) => $(s).addEventListener("input", () => { if (!promptEdited) $("#promptView").value = preset.p(); }));
+$("#togglePrompt").onclick = () => {
+  const v = $("#promptView");
+  v.hidden = !v.hidden;
+  $("#togglePrompt").textContent = v.hidden ? t("showPrompt") : t("hidePrompt");
+};
+const currentPrompt = () => (promptEdited ? $("#promptView").value : preset.p());
+
+// ---------- Ключ ----------
+let serverKey = false;
+const userKey = () => store.get("fal_key") || "";
+async function initKey() {
+  try { serverKey = (await (await fetch("/api/config")).json()).serverKey; } catch {}
+  if (serverKey) {
+    $("#keydot").classList.add("ok");
+    $("#keylabel").textContent = t("keyOk");
+    return;
+  }
+  $("#keybox").innerHTML = `<span class="dot ${userKey() ? "ok" : ""}" id="keydot"></span>
+    <input type="password" id="keyin" placeholder="${t("keyPh")}" />`;
+  $("#keyin").value = userKey();
+  $("#keyin").addEventListener("change", (e) => {
+    const v = e.target.value.trim();
+    store.set("fal_key", v);
+    $("#keydot").classList.toggle("ok", !!v);
+    toast(v ? t("keySaved") : t("keyRemoved"));
+    updateRun();
+  });
+}
+
+// ---------- Загрузка файлов ----------
+let files = []; // {id, name, dataUrl}
+const drop = $("#drop");
+drop.onclick = () => $("#file").click();
+$("#file").onchange = (e) => addFiles(e.target.files);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); };
+
+async function addFiles(list) {
+  for (const f of list) {
+    if (!f.type.startsWith("image/")) continue;
+    try {
+      const dataUrl = await resizeImage(f, 2560);
+      files.push({ id: crypto.randomUUID(), name: f.name.replace(/\.[^.]+$/, ""), dataUrl });
+    } catch { toast(t("e_open", f.name)); }
+  }
+  $("#file").value = "";
+  renderThumbs();
+}
+function resizeImage(file, max) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+function renderThumbs() {
+  $("#thumbs").innerHTML = "";
+  files.forEach((f) => {
+    const d = document.createElement("div");
+    d.innerHTML = `<img src="${f.dataUrl}" alt=""><button title="${t("remove")}">×</button>`;
+    d.querySelector("button").onclick = () => { files = files.filter((x) => x !== f); renderThumbs(); };
+    $("#thumbs").appendChild(d);
+  });
+  updateRun();
+}
+function updateRun() {
+  const hasKey = serverKey || !!userKey();
+  $("#run").disabled = !files.length || !hasKey;
+  $("#run").textContent = files.length ? t("runN", files.length) : t("run");
+  $("#runHint").textContent = !hasKey ? t("hintKey")
+    : !files.length ? t("hintAdd")
+    : $("#model").value.includes("pro") ? t("hintPro") : t("hintStd");
+}
+$("#model").onchange = updateRun;
+
+// ---------- API ----------
+function headers() {
+  const h = { "Content-Type": "application/json" };
+  if (!serverKey && userKey()) h["x-fal-key"] = userKey();
+  return h;
+}
+async function runModel(model, input, onStatus) {
+  const r = await fetch("/api/submit", { method: "POST", headers: headers(), body: JSON.stringify({ model, input }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || t("e_req"));
+  const started = Date.now();
+  while (true) {
+    await new Promise((res) => setTimeout(res, 1500));
+    const s = await fetch(`/api/status/${j.id}`, { headers: headers() });
+    const sj = await s.json().catch(() => ({}));
+    if (!s.ok) throw new Error(sj.error || t("e_req"));
+    if (sj.status === "COMPLETED") return sj.result;
+    onStatus?.(sj.status === "IN_QUEUE" ? { state: "queue", n: sj.position } : { state: "proc", n: Math.round((Date.now() - started) / 1000) });
+    if (Date.now() - started > 6 * 60 * 1000) throw new Error(t("e_long"));
+  }
+}
+
+// ---------- Обработка ----------
+// job.state: wait | send | queue | proc | up | done | err
+const jobs = [];
+$("#run").onclick = () => {
+  const settings = {
+    preset, prompt: currentPrompt(), model: $("#model").value, res: $("#res").value,
+    upscale: $("#upscale").checked || !!preset.upscaleOnly,
+  };
+  for (const f of files) {
+    const job = { file: f, settings, state: "wait", n: null, resultUrl: null, error: null };
+    jobs.unshift(job);
+    createCard(job);
+  }
+  files = []; renderThumbs();
+  $("#empty").hidden = true;
+  pump();
+};
+
+let active = 0;
+const MAX_PARALLEL = 3;
+function pump() {
+  while (active < MAX_PARALLEL) {
+    const job = jobs.slice().reverse().find((j) => j.state === "wait");
+    if (!job) break;
+    active++;
+    process(job).finally(() => { active--; pump(); });
+  }
+}
+function statusText(job) {
+  switch (job.state) {
+    case "wait": return t("st_wait");
+    case "send": return t("st_send");
+    case "queue": return (job.phase === "up" ? t("st_up") + " " : "") + t("st_queue", job.n);
+    case "proc": return job.phase === "up" ? t("st_up") : t("st_proc", job.n);
+    case "done": return t("st_done");
+    default: return t("st_err");
+  }
+}
+async function process(job) {
+  const { settings } = job;
+  const set = (o) => { Object.assign(job, o); if (job.state !== "deleted") updateCard(job); };
+  job.error = null;
+  try {
+    let url = job.file.dataUrl;
+    if (!settings.preset.upscaleOnly) {
+      set({ state: "send", phase: "edit" });
+      const input = { prompt: settings.prompt, image_urls: [url], num_images: 1, output_format: "jpeg", aspect_ratio: "auto" };
+      if (settings.model.includes("pro")) input.resolution = settings.res;
+      const out = await runModel(settings.model, input, set);
+      url = out?.images?.[0]?.url;
+      if (!url) throw new Error(t("e_noimg"));
+    }
+    if (settings.upscale) {
+      set({ state: "proc", phase: "up" });
+      const out = await runModel("fal-ai/seedvr/upscale/image",
+        { image_url: url, upscale_mode: "factor", upscale_factor: 2, output_format: "jpg" }, set);
+      url = out?.image?.url || url;
+    }
+    job.resultUrl = url;
+    set({ state: "done" });
+  } catch (e) {
+    set({ state: "err", error: e.message });
+  }
+  $("#dlAll").hidden = !jobs.some((j) => j.resultUrl);
+}
+
+// ---------- Карточки ----------
+function baHTML(before, after) {
+  return `<div class="ba">
+    <img class="after" src="${after || before}" alt="${t("after")}">
+    <img class="before" src="${before}" alt="${t("before")}">
+    <div class="bar"></div>
+    <span class="tag l">${t("before")}</span><span class="tag r">${t("after")}</span>
+    <input type="range" min="0" max="100" value="50" aria-label="${t("before")} / ${t("after")}">
+  </div>`;
+}
+function wireBA(root) {
+  const range = root.querySelector("input[type=range]");
+  const apply = () => {
+    const v = range.value;
+    root.querySelector(".before").style.clipPath = `inset(0 ${100 - v}% 0 0)`;
+    root.querySelector(".bar").style.left = v + "%";
+  };
+  range.oninput = apply; apply();
+}
+function createCard(job) {
+  const el = document.createElement("div");
+  el.className = "card";
+  job.el = el;
+  $("#grid").prepend(el);
+  updateCard(job);
+}
+const resultSrc = (job) => `/api/download?inline=1&url=${encodeURIComponent(job.resultUrl)}`;
+function updateCard(job) {
+  const el = job.el;
+  const done = job.state === "done" && !!job.resultUrl;
+  const busy = !done && job.state !== "err";
+  const s = job.settings;
+  el.innerHTML = `
+    ${baHTML(job.file.dataUrl, done ? resultSrc(job) : null)}
+    <div class="meta">
+      <div>
+        <div class="name">${escapeHtml(job.file.name)}</div>
+        <div class="sub">${s.preset.icon} ${pTitle(s.preset)}${s.upscale && !s.preset.upscaleOnly ? t("plusUp") : ""}</div>
+        ${job.error ? `<div class="err">${escapeHtml(job.error)}</div>` : ""}
+      </div>
+      <div class="actions">
+        ${done ? `<button class="btn ghost" data-a="full" title="${t("full")}">⤢</button>
+                  <button class="btn ghost" data-a="dl">${t("dl")}</button>` : ""}
+        ${!busy ? `<button class="btn ghost" data-a="retry">${done ? t("again") : t("retry")}</button>` : ""}
+        <button class="btn ghost" data-a="del" title="${t("del")}">🗑</button>
+      </div>
+    </div>`;
+  if (busy) {
+    el.querySelector(".ba").insertAdjacentHTML("beforeend", `<div class="overlay"><div class="box"><div class="spin"></div>${escapeHtml(statusText(job))}</div></div>`);
+  }
+  if (!done) el.querySelector(".ba").querySelectorAll(".bar, .tag, input").forEach((n) => (n.style.display = "none"));
+  else wireBA(el);
+  el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => cardAction(job, b.dataset.a)));
+}
+function cardAction(job, a) {
+  if (a === "dl") return download(job);
+  if (a === "full") return openModal(job);
+  if (a === "retry") { job.resultUrl = null; job.error = null; job.state = "wait"; updateCard(job); pump(); return; }
+  if (a === "del") {
+    jobs.splice(jobs.indexOf(job), 1); job.el.remove(); job.state = "deleted";
+    $("#empty").hidden = jobs.length > 0; $("#dlAll").hidden = !jobs.some((j) => j.resultUrl);
+  }
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ---------- Скачивание (с пометкой) ----------
+async function download(job) {
+  const fname = `${job.file.name}_${job.settings.preset.id}.jpg`;
+  const needMark = $("#mark").checked && job.settings.preset.staging;
+  try {
+    let blob = await (await fetch(resultSrc(job))).blob();
+    if (needMark) blob = await addLabel(blob, t("watermark"));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch {
+    location.href = `/api/download?url=${encodeURIComponent(job.resultUrl)}&name=${encodeURIComponent(fname)}`;
+  }
+}
+function addLabel(blob, text) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      const fs = Math.max(14, Math.round(c.width / 70));
+      g.font = `600 ${fs}px Manrope, sans-serif`;
+      const pad = fs * 0.6, w = g.measureText(text).width + pad * 2, h = fs + pad * 1.4;
+      const x = c.width - w - fs, y = c.height - h - fs;
+      g.fillStyle = "rgba(0,0,0,0.55)";
+      g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, fs * 0.4) : g.rect(x, y, w, h); g.fill();
+      g.fillStyle = "#fff"; g.textBaseline = "middle";
+      g.fillText(text, x + pad, y + h / 2);
+      c.toBlob((b) => (b ? resolve(b) : reject()), "image/jpeg", 0.93);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+$("#dlAll").onclick = async () => {
+  for (const j of jobs.filter((j) => j.resultUrl)) { await download(j); await new Promise((r) => setTimeout(r, 400)); }
+};
+
+// ---------- Полноэкранное сравнение ----------
+function openModal(job) {
+  $("#modalBody").innerHTML = baHTML(job.file.dataUrl, resultSrc(job));
+  wireBA($("#modalBody"));
+  $("#modal").classList.add("show");
+}
+$("#modalClose").onclick = () => $("#modal").classList.remove("show");
+$("#modal").onclick = (e) => { if (e.target.id === "modal") $("#modal").classList.remove("show"); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#modal").classList.remove("show"); });
+
+let toastT;
+function toast(msg) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2600); }
+
+syncPresetUI();
+initKey().then(applyLang);
+applyLang();
+</script>
+</body>
+</html>
