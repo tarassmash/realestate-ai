@@ -27,7 +27,9 @@ const fal = http.createServer((req, res) => {
     } else if (req.url.startsWith("/s/")) {
       res.end(JSON.stringify({ status: "COMPLETED" }));
     } else if (req.url === "/r/edit/ok") {
-      res.end(JSON.stringify({ images: [{ url: "https://v3.fal.media/files/test/edited.jpg" }] }));
+      res.end(JSON.stringify({ images: [{ url: `${base}/img.jpg` }] }));
+    } else if (req.url === "/img.jpg") {
+      res.writeHead(200, { "Content-Type": "image/jpeg" }); res.end(Buffer.from("AFTERJPEG"));
     } else if (req.url === "/r/up/ok") {
       res.end(JSON.stringify({ image: { url: "https://v3.fal.media/files/test/upscaled.jpg" } }));
     } else {
@@ -177,6 +179,33 @@ async function waitJob(c, id) {
     await Boss("POST", "/api/admin/credits", { userId: r.data.users[0].id, delta: 7 });
     assert.equal((await A("GET", "/api/me")).data.user.credits, 17);
     console.log("✓ админка: статистика, поиск, начисление");
+
+    // демо на главной: генерирует админ, публика видит только опубликованные
+    r = await A("POST", "/api/admin/demos", { image: IMG, preset: "staging", prompt: "Stage it" });
+    assert.equal(r.status, 403);
+    r = await Boss("POST", "/api/admin/demos", { image: IMG, preset: "staging", prompt: "Stage the living room" });
+    assert.equal(r.status, 200);
+    const demoId = r.data.id;
+    for (let i = 0; i < 20; i++) {
+      const l = await Boss("GET", "/api/admin/demos");
+      if (l.data.demos[0].status !== "running") break;
+      await sleep(300);
+    }
+    r = await Boss("GET", "/api/admin/demos");
+    assert.equal(r.data.demos[0].status, "done", JSON.stringify(r.data.demos[0]));
+    let pub = await fetch(`http://127.0.0.1:${PORT}/demo-img/${demoId}/after`);
+    assert.equal(pub.status, 401); // не опубликовано — не видно
+    assert.equal((await (await fetch(`http://127.0.0.1:${PORT}/api/demos`)).json()).demos.length, 0);
+    await Boss("POST", `/api/admin/demos/${demoId}/update`, { published: true });
+    const list = await (await fetch(`http://127.0.0.1:${PORT}/api/demos`)).json();
+    assert.equal(list.demos.length, 1);
+    pub = await fetch(`http://127.0.0.1:${PORT}/demo-img/${demoId}/after`);
+    assert.equal(pub.status, 200); assert.equal(await pub.text(), "AFTERJPEG");
+    pub = await fetch(`http://127.0.0.1:${PORT}/demo-img/${demoId}/before`);
+    assert.equal(await pub.text(), "fakejpeg");
+    await Boss("DELETE", `/api/admin/demos/${demoId}`);
+    assert.equal((await (await fetch(`http://127.0.0.1:${PORT}/api/demos`)).json()).demos.length, 0);
+    console.log("✓ демо: генерация из админки, публикация, удаление");
 
     r = await A("POST", "/api/auth/logout", {});
     r = await A("GET", "/api/me");

@@ -34,6 +34,9 @@
   .demo input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
   .demo .tag { position: absolute; top: 14px; padding: 4px 10px; border-radius: 7px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; pointer-events: none; }
   .demo .tag.l { left: 14px; } .demo .tag.r { right: 14px; }
+  .demo-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; justify-content: center; }
+  .demo-tabs button { border: 1px solid var(--line); background: #fff; border-radius: 30px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); }
+  .demo-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1180px; margin: 0 auto; padding: 8px 24px 0; }
   .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
@@ -99,8 +102,9 @@
     </div>
     <div class="note"><span data-i18n="f_nocard"></span><span data-i18n="noteSec"></span><span data-i18n="noteLang"></span></div>
   </div>
+  <div>
   <div class="demo" id="demo">
-    <!-- Если положить свои фото в public/demo/before.jpg и after.jpg, они заменят иллюстрацию -->
+    <!-- Реальные пары «до/после» публикуются из админки (/admin → Демо на главной) и заменяют иллюстрацию -->
     <svg class="after" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
         <linearGradient id="wallA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7f2e8"/><stop offset="1" stop-color="#efe6d6"/></linearGradient>
@@ -150,6 +154,8 @@
     <div class="bar"></div>
     <span class="tag l" data-i18n="before"></span><span class="tag r" data-i18n="after"></span>
     <input type="range" min="0" max="100" value="50" aria-label="before / after" id="demoRange" />
+  </div>
+  <div class="demo-tabs" id="demoTabs" hidden></div>
   </div>
 </div>
 
@@ -359,18 +365,38 @@ const applyDemo = () => {
   $("#demo .bar").style.left = v + "%";
 };
 range.oninput = applyDemo; applyDemo();
-// свои демо-фото, если владелец положил их в /demo/
-(() => {
+// реальные демо из админки
+const PRESET_ORDER = ["enhance", "staging", "declutter", "empty", "sky", "twilight", "lawn", "refresh", "upscale", "custom"];
+let DEMOS = [], demoIdx = 0, demoTimer = null;
+const demoName = (preset) => (t("feats")[PRESET_ORDER.indexOf(preset)] || [, preset])[1];
+function showDemo(i) {
+  demoIdx = i;
+  const d = DEMOS[i];
+  const box = $("#demo");
+  box.querySelectorAll("svg, img").forEach((n) => n.remove());
   const a = new Image(), b = new Image();
-  let ok = 0;
-  const done = () => {
-    if (++ok < 2) return;
-    a.className = "after"; b.className = "before";
-    $("#demo svg.after").replaceWith(a); $("#demo svg.before").replaceWith(b); applyDemo();
-  };
-  a.onload = done; b.onload = done;
-  a.src = "/demo/after.jpg"; b.src = "/demo/before.jpg";
-})();
+  a.className = "after"; b.className = "before";
+  a.alt = demoName(d.preset); b.alt = "";
+  a.src = `/demo-img/${d.id}/after?v=${d.v}`; b.src = `/demo-img/${d.id}/before?v=${d.v}`;
+  box.prepend(b); box.prepend(a);
+  range.value = 50; applyDemo();
+  $$("#demoTabs button").forEach((x, k) => x.classList.toggle("on", k === i));
+}
+function renderDemoTabs() {
+  if (!DEMOS.length) return;
+  $("#demoTabs").hidden = DEMOS.length < 2;
+  $("#demoTabs").innerHTML = DEMOS.map((d, k) => `<button class="${k === demoIdx ? "on" : ""}">${escapeHtml(demoName(d.preset))}</button>`).join("");
+  $$("#demoTabs button").forEach((x, k) => (x.onclick = () => { stopDemoAuto(); showDemo(k); }));
+}
+const stopDemoAuto = () => { clearInterval(demoTimer); demoTimer = null; };
+range.addEventListener("pointerdown", stopDemoAuto);
+range.addEventListener("input", stopDemoAuto);
+fetch("/api/demos").then((r) => r.json()).then(({ demos }) => {
+  if (!demos?.length) return;
+  DEMOS = demos;
+  renderDemoTabs(); showDemo(0);
+  if (DEMOS.length > 1) demoTimer = setInterval(() => showDemo((demoIdx + 1) % DEMOS.length), 6000);
+}).catch(() => {});
 
 let loggedIn = false;
 const cta = () => (loggedIn ? (location.href = "/app") : openAuth("up"));
@@ -385,6 +411,7 @@ $("#pricingBody").addEventListener("click", (e) => {
 
 function render() {
   const c = CONFIG || {};
+  renderDemoTabs();
   $("#ctaHero").textContent = loggedIn ? t("openApp") : t("ctaFree", c.freeCredits || 5);
   $("#ctaFinal").textContent = $("#ctaHero").textContent;
   $("#ctaTop").textContent = loggedIn ? t("openApp") : t("tryFree");

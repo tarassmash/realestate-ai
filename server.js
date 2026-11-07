@@ -279,6 +279,111 @@ async function handleDownload(req, res, query) {
   res.end(buf);
 }
 
+// ---------- демо на главной (генерируются из админки) ----------
+const DEMO_PRESETS = new Set([...PRESETS].filter((p) => p !== "upscale"));
+const DEMO_MAX_BYTES = 12 * 1024 * 1024;
+
+function parseDataUrl(d) {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(d || "");
+  if (!m) return null;
+  return { type: m[1], buf: Buffer.from(m[2], "base64") };
+}
+
+async function runDemo(id) {
+  const { rows } = await db.q("SELECT * FROM demos WHERE id=$1", [id]);
+  const d = rows[0];
+  if (!d) return;
+  try {
+    if (!config.FAL_KEY) throw new Error("FAL_KEY не задан");
+    const url = await fal.processPhoto({
+      image: `data:${d.before_type};base64,${d.before_img.toString("base64")}`,
+      prompt: d.prompt, model: d.model, resolution: d.resolution, upscale: false, upscaleOnly: false,
+    });
+    // сохраняем результат у себя — ссылки CDN fal могут истечь
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("download " + r.status);
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > DEMO_MAX_BYTES) throw new Error("result too large");
+    await db.q(
+      "UPDATE demos SET after_img=$2, after_type=$3, status='done', error=NULL, updated_at=now() WHERE id=$1",
+      [id, buf, r.headers.get("content-type") || "image/jpeg"]
+    );
+  } catch (e) {
+    console.error("demo failed", id, e.message);
+    await db.q("UPDATE demos SET status='failed', error=$2, updated_at=now() WHERE id=$1", [id, e.message.slice(0, 300)]);
+  }
+}
+
+async function demoRoute(method, pathname, req, res) {
+  let m;
+  // публичный список опубликованных демо
+  if (method === "GET" && pathname === "/api/demos") {
+    const { rows } = await db.q(
+      `SELECT id, preset, extract(epoch from updated_at)::bigint AS v FROM demos
+       WHERE published AND status='done' ORDER BY position, created_at LIMIT 6`
+    );
+    return send(res, 200, { demos: rows }, { "Cache-Control": "public, max-age=60" });
+  }
+  // картинки демо: публичные — только опубликованные, остальные — админу
+  if (method === "GET" && (m = pathname.match(/^\/demo-img\/([0-9a-f-]{36})\/(before|after)$/))) {
+    const col = m[2] === "before" ? "before" : "after";
+    const { rows } = await db.q(`SELECT ${col}_img AS img, ${col}_type AS type, published FROM demos WHERE id=$1`, [m[1]]);
+    const d = rows[0];
+    if (!d || !d.img) throw auth.httpErr(404, "not_found");
+    if (!d.published) await requireAdmin(req);
+    res.writeHead(200, {
+      "Content-Type": d.type, "Content-Length": d.img.length,
+      "Cache-Control": d.published ? "public, max-age=86400" : "private, no-store",
+    });
+    return res.end(d.img);
+  }
+  if (!pathname.startsWith("/api/admin/demos")) return false;
+  await requireAdmin(req);
+
+  if (method === "GET" && pathname === "/api/admin/demos") {
+    const { rows } = await db.q(
+      `SELECT id, preset, status, error, published, position, created_at, extract(epoch from updated_at)::bigint AS v
+       FROM demos ORDER BY position, created_at DESC`
+    );
+    return send(res, 200, { demos: rows });
+  }
+  if (method === "POST" && pathname === "/api/admin/demos") {
+    const b = await readJson(req);
+    const img = parseDataUrl(b.image);
+    if (!img || img.buf.length > DEMO_MAX_BYTES) throw auth.httpErr(400, "bad_image");
+    if (!DEMO_PRESETS.has(b.preset)) throw auth.httpErr(400, "bad_preset");
+    const id = crypto.randomUUID();
+    const pos = (await db.q("SELECT coalesce(max(position),0)+1 AS p FROM demos")).rows[0].p;
+    await db.q(
+      `INSERT INTO demos(id, preset, prompt, model, resolution, before_img, before_type, position)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, b.preset, String(b.prompt || "").slice(0, 4000),
+       fal.EDIT_MODELS.has(b.model) ? b.model : "fal-ai/nano-banana-pro/edit",
+       ["1K", "2K", "4K"].includes(b.resolution) ? b.resolution : "2K", img.buf, img.type, pos]
+    );
+    runDemo(id);
+    return send(res, 200, { id });
+  }
+  if (method === "POST" && (m = pathname.match(/^\/api\/admin\/demos\/([0-9a-f-]{36})\/(regenerate|update)$/))) {
+    if (m[2] === "regenerate") {
+      await db.q("UPDATE demos SET status='running', error=NULL, updated_at=now() WHERE id=$1 AND status<>'running'", [m[1]]);
+      runDemo(m[1]);
+    } else {
+      const b = await readJson(req, 2000);
+      if (typeof b.published === "boolean") {
+        await db.q("UPDATE demos SET published=$2, updated_at=now() WHERE id=$1 AND (status='done' OR $2=FALSE)", [m[1], b.published]);
+      }
+      if (Number.isInteger(b.position)) await db.q("UPDATE demos SET position=$2 WHERE id=$1", [m[1], b.position]);
+    }
+    return send(res, 200, { ok: true });
+  }
+  if (method === "DELETE" && (m = pathname.match(/^\/api\/admin\/demos\/([0-9a-f-]{36})$/))) {
+    await db.q("DELETE FROM demos WHERE id=$1", [m[1]]);
+    return send(res, 200, { ok: true });
+  }
+  return false;
+}
+
 // ---------- оплата ----------
 async function handleCheckout(req, res) {
   const u = await requireUser(req);
@@ -428,6 +533,10 @@ const server = http.createServer(async (req, res) => {
     if (key === "POST /api/checkout") return await handleCheckout(req, res);
     if (key === "GET /api/download") return await handleDownload(req, res, query);
     if (routes[key]) return send(res, 200, await routes[key](req, res, { query }));
+    if (pathname === "/api/demos" || pathname.startsWith("/demo-img/") || pathname.startsWith("/api/admin/demos")) {
+      if ((await demoRoute(req.method, pathname, req, res)) !== false) return;
+      return send(res, 404, { error: "not_found" });
+    }
     if (adminRoutes[key]) {
       await requireAdmin(req);
       return send(res, 200, await adminRoutes[key](req, res, { query }));

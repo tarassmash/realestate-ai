@@ -244,6 +244,7 @@
 <div class="modal-bg" id="modal"><button class="close" id="modalClose">×</button><div id="modalBody"></div></div>
 
 <script src="/common.js"></script>
+<script src="/presets.js"></script>
 <script>
 // ---------- строки приложения ----------
 Object.assign(PAGE_I18N.ru, {
@@ -374,20 +375,9 @@ function showView(v) {
 }
 $$("#viewtabs button").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
 
-// ---------- пресеты ----------
-const BASE = "This is a real estate listing photo. Keep the exact same room layout, architecture, walls, ceiling, floor, windows, doors, camera angle and perspective. Do not add or remove structural elements and do not change the view through the windows unless asked. Output a photorealistic, professional real estate photograph.";
-const PRESETS = [
-  { id: "enhance", p: () => `${BASE} Professionally retouch it: bright, natural, even lighting; balanced HDR exposure so window views are visible and not blown out; accurate neutral white balance (remove yellow or blue color casts); straighten converging vertical lines; crisp detail; remove noise. Do not move, add or remove any furniture or objects.` },
-  { id: "staging", staging: true, p: () => `${BASE} Virtually stage this space as ${$("#room").value} with tasteful furniture and decor in ${$("#style").value} style. Realistic scale, contact shadows and reflections matching the existing light direction. Keep floors, walls, windows and built-in fixtures exactly unchanged. Bright, inviting, magazine-quality listing photo.` },
-  { id: "declutter", staging: true, p: () => `${BASE} Declutter the space: remove personal items, cables, toiletries, papers, fridge magnets, clothes, bags, shoes, toys, dishes, trash, family photos and small loose objects. Keep the main furniture in place. Leave clean, tidy surfaces.` },
-  { id: "empty", staging: true, p: () => `${BASE} Remove all movable furniture, rugs, decor and objects, leaving a clean, empty room with the bare floor, walls, windows, radiators, sockets and built-in fixtures intact. Fill removed areas with matching floor and wall texture.` },
-  { id: "sky", staging: true, p: () => `${BASE} Replace the sky with a clear, bright blue sky with a few soft white clouds, and adjust the exterior lighting to sunny daylight consistent with the new sky. Keep the building and surroundings unchanged.` },
-  { id: "twilight", staging: true, p: () => `${BASE} Convert this exterior photo into a professional dusk twilight shot: deep blue to warm orange sunset sky, warm glowing interior lights in every window, soft exterior and landscape lighting, gentle reflections. Keep the building unchanged.` },
-  { id: "lawn", staging: true, p: () => `${BASE} Make the lawn and landscaping lush, green and well maintained; tidy the yard and walkways; remove fallen leaves, debris, hoses, trash bins and parked construction items. Keep the building unchanged.` },
-  { id: "refresh", staging: true, p: () => `${BASE} Make the interior look freshly renovated: walls repainted in a clean warm white, remove stains, scuffs and cracks, clean and polish floors, tiles and surfaces. Keep the same materials, layout and furniture.` },
-  { id: "upscale", upscaleOnly: true, p: () => "" },
-  { id: "custom", staging: true, p: () => `${BASE} Follow this instruction (it may be in any language): ${$("#custom").value.trim() || "Improve the photo."}` },
-];
+// ---------- пресеты (инструкции — в /presets.js) ----------
+const presetOpts = () => ({ room: $("#room").value, style: $("#style").value, custom: $("#custom").value });
+const PRESETS = PRESET_DEFS.map((d) => ({ ...d, p: () => d.p(presetOpts()) }));
 const presetById = (id) => PRESETS.find((p) => p.id === id) || PRESETS[0];
 let preset = PRESETS[0];
 function renderPresets() {

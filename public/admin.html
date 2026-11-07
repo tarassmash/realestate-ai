@@ -21,6 +21,25 @@
   .scroll { overflow-x: auto; }
   .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
   .bar input { max-width: 320px; }
+  h2.sec { font-size: 20px; margin: 34px 0 6px; letter-spacing: -.01em; }
+  .muted { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+  .demo-form { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; grid-template-columns: 1.1fr 1fr 1fr auto; gap: 12px; align-items: end; }
+  @media (max-width: 900px) { .demo-form { grid-template-columns: 1fr; } }
+  .demo-form label.f { margin-top: 0; }
+  .demo-form textarea { min-height: 42px; height: 42px; font-size: 13px; }
+  .demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; margin-top: 14px; }
+  .dcard { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .dcard.pub { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .ba { position: relative; aspect-ratio: 3/2; background: #e9e6df; overflow: hidden; user-select: none; }
+  .ba img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ba .b { clip-path: inset(0 50% 0 0); }
+  .ba .ln { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; pointer-events: none; }
+  .ba input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+  .ba .ov { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(245,243,239,.6); font-weight: 700; font-size: 14px; }
+  .dmeta { padding: 10px 12px; display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .dmeta .err { color: var(--warn); font-size: 12px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 20px; background: #eee; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .pill.on { background: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -31,6 +50,42 @@
 <div class="wrap">
   <h1 style="margin:0 0 16px;letter-spacing:-.02em">Админка</h1>
   <div class="tiles" id="tiles"></div>
+
+  <h2 class="sec">Демо на главной</h2>
+  <p class="muted">Загрузите реальное фото, выберите инструмент и сгенерируйте результат. Опубликованные пары «до/после» (до 6) показываются на главной странице по порядку. Генерация оплачивается с вашего баланса fal (~$0.15), кредиты не списываются.</p>
+  <div class="demo-form">
+    <div><label class="f">Фото</label><input type="file" id="dFile" accept="image/*" /></div>
+    <div><label class="f">Инструмент</label><select id="dPreset"></select></div>
+    <div id="dExtra">
+      <div id="dStagingWrap"><label class="f">Стиль · комната</label>
+        <div style="display:flex;gap:6px">
+          <select id="dStyle">
+            <option value="Scandinavian: light oak wood, white and beige textiles, cozy minimal decor">Сканди</option>
+            <option value="modern contemporary: clean lines, neutral palette with warm accents, designer lighting">Современный</option>
+            <option value="minimalist: very few pieces, calm neutral tones, uncluttered">Минимализм</option>
+            <option value="industrial loft: leather, dark metal, warm wood, Edison lamps">Лофт</option>
+            <option value="classic elegant: upholstered furniture, soft patterns, brass details">Классика</option>
+            <option value="Mediterranean: natural linen, rattan, terracotta, olive greens">Средиземн.</option>
+            <option value="luxury premium: high-end designer furniture, marble, velvet, statement chandelier">Премиум</option>
+          </select>
+          <select id="dRoom">
+            <option value="the appropriate room type">Авто</option>
+            <option value="a living room">Гостиная</option>
+            <option value="a bedroom">Спальня</option>
+            <option value="a kitchen with dining area">Кухня</option>
+            <option value="a home office">Кабинет</option>
+            <option value="a dining room">Столовая</option>
+            <option value="a terrace / balcony with outdoor furniture">Терраса</option>
+          </select>
+        </div>
+      </div>
+      <div id="dCustomWrap" hidden><label class="f">Инструкция</label><textarea id="dCustom" placeholder="Что изменить"></textarea></div>
+    </div>
+    <button class="btn" id="dGo">Сгенерировать</button>
+  </div>
+  <div class="demos" id="demos"></div>
+
+  <h2 class="sec">Пользователи</h2>
   <div class="bar">
     <input type="text" id="q" placeholder="Поиск по email" />
     <button class="btn sm" id="search">Найти</button>
@@ -43,6 +98,7 @@
   </div>
 </div>
 <script src="/common.js"></script>
+<script src="/presets.js"></script>
 <script>
 lang = "ru";
 $("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
@@ -99,10 +155,104 @@ $("#rows").addEventListener("click", async (e) => {
   } catch (err) { toast(err.code); }
 });
 $("#search").onclick = loadUsers;
+
+// ---------- демо на главной ----------
+const PRESET_RU = { enhance: "✨ Авто‑улучшение", staging: "🛋️ Меблировка", declutter: "🧹 Убрать хлам", empty: "⬜ Пустая комната",
+  sky: "☀️ Замена неба", twilight: "🌆 Вечерняя съёмка", lawn: "🌿 Благоустройство", refresh: "🎨 Освежить ремонт", custom: "✍️ Своя задача" };
+$("#dPreset").innerHTML = PRESET_DEFS.filter((d) => !d.upscaleOnly).map((d) => `<option value="${d.id}" ${d.id === "staging" ? "selected" : ""}>${PRESET_RU[d.id]}</option>`).join("");
+const syncDemoForm = () => {
+  $("#dStagingWrap").hidden = $("#dPreset").value !== "staging";
+  $("#dCustomWrap").hidden = $("#dPreset").value !== "custom";
+};
+$("#dPreset").onchange = syncDemoForm; syncDemoForm();
+
+function resizeFile(file, max = 2048) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); resolve(c.toDataURL("image/jpeg", 0.88));
+    };
+    img.onerror = reject; img.src = url;
+  });
+}
+
+$("#dGo").onclick = async () => {
+  const f = $("#dFile").files[0];
+  if (!f) return toast("Выберите фото");
+  const id = $("#dPreset").value;
+  const def = PRESET_DEFS.find((d) => d.id === id);
+  $("#dGo").disabled = true;
+  try {
+    const image = await resizeFile(f);
+    await api("/api/admin/demos", {
+      image, preset: id, model: "fal-ai/nano-banana-pro/edit", resolution: "2K",
+      prompt: def.p({ style: $("#dStyle").value, room: $("#dRoom").value, custom: $("#dCustom").value }),
+    });
+    $("#dFile").value = "";
+    toast("Генерация запущена — ~30–60 секунд");
+    loadDemos();
+  } catch (e) { toast("Ошибка: " + e.code); }
+  finally { $("#dGo").disabled = false; }
+};
+
+let demoPoll;
+async function loadDemos() {
+  const { demos } = await api("/api/admin/demos");
+  $("#demos").innerHTML = demos.map((d, i) => {
+    const done = d.status === "done";
+    return `<div class="dcard ${d.published ? "pub" : ""}" data-id="${d.id}">
+      <div class="ba">
+        <img src="/demo-img/${d.id}/${done ? "after" : "before"}?v=${d.v}" alt="">
+        <img class="b" src="/demo-img/${d.id}/before?v=${d.v}" alt="" ${done ? "" : "hidden"}>
+        ${done ? `<div class="ln"></div><input type="range" min="0" max="100" value="50">` : ""}
+        ${d.status === "running" ? `<div class="ov">⏳ Генерация…</div>` : ""}
+      </div>
+      <div class="dmeta">
+        <div>${PRESET_RU[d.preset] || d.preset} <span class="pill ${d.published ? "on" : ""}">${d.published ? "на главной" : "скрыто"}</span>
+          ${d.status === "failed" ? `<div class="err">Ошибка: ${escapeHtml(d.error || "")}</div>` : ""}</div>
+        <div class="acts" style="display:flex;gap:5px;flex-wrap:wrap">
+          ${done ? `<button class="btn sm ${d.published ? "ghost" : ""}" data-a="pub">${d.published ? "Скрыть" : "Опубликовать"}</button>` : ""}
+          <button class="btn ghost sm" data-a="up" title="Выше" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button class="btn ghost sm" data-a="down" title="Ниже" ${i === demos.length - 1 ? "disabled" : ""}>↓</button>
+          ${d.status !== "running" ? `<button class="btn ghost sm" data-a="regen">Ещё вариант</button>` : ""}
+          <button class="btn ghost sm" data-a="del">🗑</button>
+        </div>
+      </div></div>`;
+  }).join("") || `<p class="muted">Пока нет демо. Пока их нет, на главной показывается иллюстрация.</p>`;
+  $$("#demos .ba input").forEach((r) => (r.oninput = () => {
+    const ba = r.closest(".ba");
+    ba.querySelector(".b").style.clipPath = `inset(0 ${100 - r.value}% 0 0)`;
+    ba.querySelector(".ln").style.left = r.value + "%";
+  }));
+  $("#demos")._list = demos;
+  clearTimeout(demoPoll);
+  if (demos.some((d) => d.status === "running")) demoPoll = setTimeout(loadDemos, 4000);
+}
+$("#demos").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const id = b.closest(".dcard").dataset.id;
+  const list = $("#demos")._list, i = list.findIndex((d) => d.id === id), d = list[i];
+  try {
+    if (b.dataset.a === "pub") await api(`/api/admin/demos/${id}/update`, { published: !d.published });
+    if (b.dataset.a === "regen") await api(`/api/admin/demos/${id}/regenerate`, {});
+    if (b.dataset.a === "del") { if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = "Точно?"; return; } await api(`/api/admin/demos/${id}`, undefined, "DELETE"); }
+    if (b.dataset.a === "up" || b.dataset.a === "down") {
+      const j = b.dataset.a === "up" ? i - 1 : i + 1;
+      // перенумеровать порядок и поменять местами
+      const order = list.map((x) => x.id); [order[i], order[j]] = [order[j], order[i]];
+      await Promise.all(order.map((oid, k) => api(`/api/admin/demos/${oid}/update`, { position: k + 1 })));
+    }
+    loadDemos();
+  } catch (err) { toast("Ошибка: " + err.code); }
+});
 $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadUsers(); });
 
 (async () => {
-  try { await loadStats(); await loadUsers(); }
+  try { await loadStats(); await loadUsers(); await loadDemos(); }
   catch (e) {
     if (e.status === 401) location.href = "/app?login";
     else document.querySelector(".wrap").innerHTML = "<h2>Нет доступа</h2><p>Добавьте свой email в переменную ADMIN_EMAILS на Railway.</p>";
