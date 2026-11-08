@@ -726,6 +726,7 @@ async function start() {
     const me = await refreshMe();
     if (me.user.lang && me.user.lang !== lang && !store.get("lang")) setLang(me.user.lang);
   } catch (e) {
+    if (e.status !== 401) { console.error(e); return toast(errText(e.code || "default"), 5000); }
     return openAuth(new URLSearchParams(location.search).has("login") ? "in" : "up", {
       locked: true,
       onDone: async (u) => { await refreshMe(); toast(t("welcome", u.credits), 4000); },

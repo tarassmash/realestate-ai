@@ -210,12 +210,18 @@ function ensureAuthDialog() {
     </form>`;
   document.body.appendChild(el);
   el.querySelectorAll(".tabs2 button").forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
-  $("#authX").onclick = () => { if (!authState.locked) el.classList.remove("show"); };
-  el.addEventListener("click", (e) => { if (e.target === el && !authState.locked) el.classList.remove("show"); });
+  $("#authX").onclick = closeAuth;
+  el.addEventListener("click", (e) => { if (e.target === el && !authState.locked) closeAuth(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && el.classList.contains("show")) closeAuth(); });
   $("#authForm").onsubmit = submitAuth;
   onLang(() => renderAuth(authState.mode));
 }
 const authState = { mode: "up", locked: false, onDone: null };
+// В приложении без входа делать нечего — закрытие возвращает на главную
+function closeAuth() {
+  if (authState.locked) return (location.href = "/");
+  $("#authDlg").classList.remove("show");
+}
 function renderAuth(mode) {
   authState.mode = mode;
   const up = mode === "up";
@@ -261,7 +267,8 @@ async function openAuth(mode = "up", { locked = false, onDone = null } = {}) {
   await loadConfig();
   ensureAuthDialog();
   authState.locked = locked; authState.onDone = onDone;
-  $("#authX").hidden = locked;
+  $("#authX").hidden = false;
+  $("#authX").title = locked ? "← " + (location.origin.replace(/^https?:\/\//, "")) : "";
   renderAuth(mode);
   $("#authDlg").classList.add("show");
   setTimeout(() => $("#authEmail").focus(), 50);

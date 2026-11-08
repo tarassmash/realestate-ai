@@ -507,19 +507,30 @@ function serveStatic(req, res, pathname) {
   const rel = PAGES[pathname] || pathname;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
   if (!file.startsWith(PUBLIC_DIR)) return send(res, 403, { error: "forbidden" });
-  fs.readFile(file, (err, buf) => {
-    if (err) {
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) {
       res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
       return res.end('<meta http-equiv="refresh" content="0;url=/">');
     }
     const ext = path.extname(file);
-    res.writeHead(200, {
+    // HTML/JS/CSS: браузер всегда перепроверяет (ETag) — после деплоя сразу свежая версия
+    const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+    const headers = {
       "Content-Type": MIME[ext] || "application/octet-stream",
-      "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+      "Cache-Control": [".woff2", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".svg"].includes(ext) ? "public, max-age=604800" : "no-cache",
+      ETag: etag,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
+    };
+    if (req.headers["if-none-match"] === etag) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    fs.readFile(file, (e2, buf) => {
+      if (e2) { res.writeHead(500); return res.end(); }
+      res.writeHead(200, headers);
+      res.end(buf);
     });
-    res.end(buf);
   });
 }
 
