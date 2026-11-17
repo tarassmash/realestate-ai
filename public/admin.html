@@ -220,9 +220,9 @@ async function loadPayments() {
     const suggest = Math.min(left, p.user_credits);
     const docs = [p.receipt_url && `<a href="${escapeHtml(p.receipt_url)}" target="_blank" rel="noopener">чек</a>`, p.invoice_url && `<a href="${escapeHtml(p.invoice_url)}" target="_blank" rel="noopener">счёт</a>`].filter(Boolean).join(" · ") || "—";
     return `<tr data-id="${p.id}">
-      <td>${dt(p.created_at)}</td><td>${escapeHtml(p.email)}</td><td>${p.credits} фото</td><td><b>${cur(p.amount_cents, p.currency)}</b></td>
+      <td>${dt(p.created_at)}</td><td>${escapeHtml(p.email)}</td><td>${p.credits} фото${p.provider === "apple" ? ` <span class="pill">App Store${p.environment === "Sandbox" ? " · sandbox" : ""}</span>` : ""}</td><td><b>${cur(p.amount_cents, p.currency)}</b></td>
       <td>${p.refunded_cents ? `${cur(p.refunded_cents, p.currency)} · ${p.refunded_credits} кр.` : "—"}</td><td>${docs}</td>
-      <td>${left > 0 && p.payment_intent ? `<div class="refund"><input type="number" min="1" max="${left}" value="${suggest || left}" title="Сколько кредитов вернуть деньгами">
+      <td>${p.provider === "apple" ? `<span class="fine">возврат — через Apple</span>` : left > 0 && p.payment_intent ? `<div class="refund"><input type="number" min="1" max="${left}" value="${suggest || left}" title="Сколько кредитов вернуть деньгами">
         <button class="btn ghost sm" data-a="refund">Вернуть</button></div><div class="fine" style="text-align:left;margin-top:2px">не использовано: ${suggest} из ${left}</div>` : "—"}</td></tr>`;
   }).join("") || `<tr><td colspan="7">Оплат пока нет</td></tr>`;
 }

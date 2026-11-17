@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Realty Photo AI";
+"NSCameraUsageDescription" = "Haz fotos del inmueble para mejorarlas con IA.";
+"NSPhotoLibraryAddUsageDescription" = "Guarda las fotos procesadas en tu fototeca.";

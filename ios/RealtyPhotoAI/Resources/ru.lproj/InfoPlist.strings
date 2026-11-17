@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Realty Photo AI";
+"NSCameraUsageDescription" = "Снимайте объекты, чтобы улучшить фото с помощью ИИ.";
+"NSPhotoLibraryAddUsageDescription" = "Сохраняйте обработанные фото в медиатеку.";

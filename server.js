@@ -11,6 +11,7 @@ const db = require("./lib/db");
 const auth = require("./lib/auth");
 const fal = require("./lib/fal");
 const stripe = require("./lib/stripe");
+const apple = require("./lib/apple");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const MAX_BODY = 25 * 1024 * 1024;
@@ -64,6 +65,7 @@ async function requireAdmin(req) {
   return u;
 }
 const publicUser = (u) => ({
+  appAccountToken: u.app_account_token || null,
   email: u.email,
   credits: u.credits,
   lang: u.lang,
@@ -144,6 +146,12 @@ const routes = {
 
   "GET /api/me": async (req) => {
     const u = await requireUser(req);
+    // UUID для StoreKit appAccountToken — привязывает покупку Apple к этому аккаунту
+    if (!u.app_account_token) {
+      u.app_account_token = crypto.randomUUID();
+      await db.q("UPDATE users SET app_account_token=$2 WHERE id=$1 AND app_account_token IS NULL", [u.id, u.app_account_token]);
+      u.app_account_token = (await db.q("SELECT app_account_token FROM users WHERE id=$1", [u.id])).rows[0].app_account_token;
+    }
     db.q("UPDATE users SET last_seen_at=now() WHERE id=$1", [u.id]).catch(() => {});
     const refs = await db.q(
       "SELECT count(*)::int AS invited, count(*) FILTER (WHERE ref_rewarded)::int AS paid FROM users WHERE referred_by=$1",
@@ -426,6 +434,16 @@ function sessionLinks(s) {
   };
 }
 
+// Кредиты за покупку + реферальный бонус пригласившему (один раз, после первой оплаты друга)
+async function creditPurchase(c, userId, credits, ref) {
+  await db.addCredits(userId, credits, "purchase", ref, c);
+  const r = await c.query(
+    "UPDATE users SET ref_rewarded=TRUE WHERE id=$1 AND referred_by IS NOT NULL AND ref_rewarded=FALSE RETURNING referred_by",
+    [userId]
+  );
+  if (r.rows[0] && config.REF_BONUS > 0) await db.addCredits(r.rows[0].referred_by, config.REF_BONUS, "ref_bonus", String(userId), c);
+}
+
 // Начисление кредитов за оплаченную сессию. Идемпотентно: повторный вызов ничего не начислит.
 async function fulfill(session) {
   if (session.payment_status !== "paid") return false;
@@ -459,13 +477,7 @@ async function fulfill(session) {
       );
       return false;
     }
-    await db.addCredits(userId, credits, "purchase", session.id, c);
-    // Реферальный бонус пригласившему — один раз, после первой оплаты друга
-    const r = await c.query(
-      "UPDATE users SET ref_rewarded=TRUE WHERE id=$1 AND referred_by IS NOT NULL AND ref_rewarded=FALSE RETURNING referred_by",
-      [userId]
-    );
-    if (r.rows[0] && config.REF_BONUS > 0) await db.addCredits(r.rows[0].referred_by, config.REF_BONUS, "ref_bonus", String(userId), c);
+    await creditPurchase(c, userId, credits, session.id);
     return true;
   });
   if (credited) console.log(`Оплата: user ${userId} +${credits} кредитов (${session.id})`);
@@ -525,6 +537,52 @@ async function handleWebhook(req, res) {
   send(res, 200, { received: true });
 }
 
+// ---------- покупки в iOS-приложении (Apple In-App Purchase) ----------
+async function handleAppleTransaction(req, res) {
+  const u = await requireUser(req);
+  const { signedTransaction } = await readJson(req, 64 * 1024);
+  const tx = apple.verifyTransaction(signedTransaction);
+  const pack = apple.packForProduct(tx.productId);
+  if (!pack) throw auth.httpErr(400, "unknown_product");
+  // покупка должна быть сделана из этого аккаунта (appAccountToken задаёт приложение)
+  if (!tx.appAccountToken || String(tx.appAccountToken).toLowerCase() !== String(u.app_account_token || "").toLowerCase())
+    throw auth.httpErr(403, "wrong_account");
+  if (tx.revocationDate) throw auth.httpErr(409, "revoked");
+  const ref = `apple:${tx.transactionId}`;
+  const credited = await db.tx(async (c) => {
+    const ins = await c.query(
+      `INSERT INTO payments(user_id, stripe_session, payment_intent, provider, environment, pack, credits, amount_cents, currency)
+       VALUES ($1,$2,$2,'apple',$3,$4,$5,$6,$7) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
+      [u.id, ref, tx.environment || null, pack.packId, pack.credits * (tx.quantity || 1),
+       Math.round((tx.price || 0) / 10), String(tx.currency || config.CURRENCY).toLowerCase()]
+    );
+    if (!ins.rows.length) return false; // эта транзакция уже начислена
+    await creditPurchase(c, u.id, pack.credits * (tx.quantity || 1), ref);
+    return true;
+  });
+  if (credited) console.log(`Apple: user ${u.id} +${pack.credits} кредитов (${ref}, ${tx.environment})`);
+  const me = await db.q("SELECT credits FROM users WHERE id=$1", [u.id]);
+  send(res, 200, { credited, credits: me.rows[0].credits });
+}
+
+// App Store Server Notifications V2 — адрес указывается в App Store Connect
+async function handleAppleNotification(req, res) {
+  const { signedPayload } = await readJson(req, 256 * 1024).catch(() => ({}));
+  let n;
+  try { n = apple.verifyJWS(signedPayload); }
+  catch (e) { return send(res, 400, { error: e.code || "bad_jws" }); }
+  const data = n.data || {};
+  if (data.bundleId && data.bundleId !== config.APPLE_BUNDLE_ID) return send(res, 200, { ok: true });
+  if ((n.notificationType === "REFUND" || n.notificationType === "REVOKE") && data.signedTransactionInfo) {
+    const tx = apple.verifyJWS(data.signedTransactionInfo);
+    const ref = `apple:${tx.transactionId}`;
+    const p = (await db.q("SELECT amount_cents FROM payments WHERE payment_intent=$1", [ref])).rows[0];
+    if (p) await applyRefund(ref, p.amount_cents, "apple");
+  }
+  await stripe.setSetting("apple_last_notification_at", new Date().toISOString()).catch(() => {});
+  send(res, 200, { ok: true });
+}
+
 // ---------- админка ----------
 const adminRoutes = {
   "GET /api/admin/stats": async () => {
@@ -544,7 +602,7 @@ const adminRoutes = {
   "GET /api/admin/payments": async () => {
     const { rows } = await db.q(
       `SELECT p.id, p.pack, p.credits, p.amount_cents, p.currency, p.refunded_cents, p.refunded_credits, p.created_at,
-              p.receipt_url, p.invoice_url, p.payment_intent, u.email, u.credits AS user_credits
+              p.receipt_url, p.invoice_url, p.payment_intent, p.provider, p.environment, u.email, u.credits AS user_credits
        FROM payments p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 200`
     );
     return { payments: rows, mode: config.STRIPE_SECRET_KEY ? stripe.mode() : null };
@@ -555,6 +613,7 @@ const adminRoutes = {
     const p = (await db.q("SELECT * FROM payments WHERE id=$1", [Number(paymentId)])).rows[0];
     if (!p) throw auth.httpErr(404, "not_found");
     if (!p.payment_intent) throw auth.httpErr(400, "no_payment_intent");
+    if (p.provider === "apple") throw auth.httpErr(400, "apple_refunds_via_apple"); // возвраты App Store делает только Apple
     const n = Math.trunc(Number(credits));
     const maxCredits = p.credits - p.refunded_credits;
     if (!(n > 0 && n <= maxCredits)) throw auth.httpErr(400, "bad_input");
@@ -666,6 +725,9 @@ const server = http.createServer(async (req, res) => {
     if (key === "POST /api/stripe/webhook") return await handleWebhook(req, res);
     if (key === "POST /api/checkout") return await handleCheckout(req, res);
     if (key === "GET /api/checkout/confirm") return await handleConfirm(req, res, query);
+    if (key === "GET /api/iap/products") return send(res, 200, { products: apple.products(), bundleId: config.APPLE_BUNDLE_ID });
+    if (key === "POST /api/iap/apple") return await handleAppleTransaction(req, res);
+    if (key === "POST /api/iap/notifications") return await handleAppleNotification(req, res);
     if (key === "GET /api/download") return await handleDownload(req, res, query);
     if (routes[key]) return send(res, 200, await routes[key](req, res, { query }));
     if (pathname === "/api/demos" || pathname.startsWith("/demo-img/") || pathname.startsWith("/api/admin/demos")) {

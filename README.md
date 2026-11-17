@@ -72,6 +72,12 @@ DATABASE_URL=postgres://... FAL_KEY=... ADMIN_EMAILS=you@mail.com npm start
 ```
 Тесты (нужна пустая тестовая база): `DATABASE_URL=postgres://.../test npm test`
 
+## iOS-приложение
+Папка `ios/` — нативное приложение SwiftUI (Xcode 26+, iOS 17+) с тем же аккаунтом и балансом.
+Покупки в приложении — только через Apple (StoreKit 2), сервер проверяет подпись Apple: `POST /api/iap/apple`,
+возвраты — `POST /api/iap/notifications`. Инструкция по публикации: [ios/APP_STORE.md](ios/APP_STORE.md).
+Переменная `APPLE_BUNDLE_ID` (по умолчанию `com.realtyphotoai.app`) должна совпадать с Bundle ID в Xcode.
+
 ## Юридические страницы (Испания)
 `/aviso-legal` (LSSI ст. 10), `/privacidad` (RGPD), `/condiciones` (условия и отказ от покупки), `/cookies` — на ES (основная версия), EN и RU.
 Данные владельца подставляются из переменных `LEGAL_*`; пока они не заданы, на страницах видна жёлтая пометка.

@@ -102,6 +102,37 @@ function client(ip) {
   };
 }
 
+// --- тестовая цепочка сертификатов «как у Apple» (root → intermediate → leaf, EC P-256, с OID Apple) ---
+const { execSync } = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const CA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "appleca-"));
+function makeChain() {
+  const sh = (c) => execSync(c, { cwd: CA_DIR, stdio: "pipe" });
+  fs.writeFileSync(path.join(CA_DIR, "ext.cnf"), [
+    "[ca]", "basicConstraints=critical,CA:true", "keyUsage=critical,keyCertSign,cRLSign",
+    "[mid]", "basicConstraints=critical,CA:true", "keyUsage=critical,keyCertSign,cRLSign", "1.2.840.113635.100.6.2.1=ASN1:NULL",
+    "[leaf]", "basicConstraints=critical,CA:false", "keyUsage=critical,digitalSignature", "1.2.840.113635.100.6.11.1=ASN1:NULL",
+  ].join("\n"));
+  for (const n of ["root", "mid", "leaf"]) sh(`openssl ecparam -name prime256v1 -genkey -noout -out ${n}.key`);
+  sh(`openssl req -x509 -new -key root.key -subj "/CN=Test Root" -days 30 -out root.pem -extensions ca -config ext.cnf`);
+  sh(`openssl req -new -key mid.key -subj "/CN=Test Mid" -out mid.csr`);
+  sh(`openssl x509 -req -in mid.csr -CA root.pem -CAkey root.key -CAcreateserial -days 30 -extfile ext.cnf -extensions mid -out mid.pem`);
+  sh(`openssl req -new -key leaf.key -subj "/CN=Test Leaf" -out leaf.csr`);
+  sh(`openssl x509 -req -in leaf.csr -CA mid.pem -CAkey mid.key -CAcreateserial -days 30 -extfile ext.cnf -extensions leaf -out leaf.pem`);
+  const der = (n) => new crypto.X509Certificate(fs.readFileSync(path.join(CA_DIR, n + ".pem"))).raw.toString("base64");
+  return { x5c: [der("leaf"), der("mid"), der("root")], leafKey: fs.readFileSync(path.join(CA_DIR, "leaf.key")), rootB64: der("root") };
+}
+const CHAIN = makeChain();
+const b64u = (b) => Buffer.from(b).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+function appleJWS(payload, { tamper = false } = {}) {
+  const h = b64u(JSON.stringify({ alg: "ES256", x5c: CHAIN.x5c }));
+  const p = b64u(JSON.stringify(payload));
+  let sig = crypto.sign("sha256", Buffer.from(`${h}.${p}`), { key: CHAIN.leafKey, dsaEncoding: "ieee-p1363" });
+  if (tamper) sig[5] ^= 0xff;
+  return `${h}.${p}.${b64u(sig)}`;
+}
+
 const IMG = "data:image/jpeg;base64," + Buffer.from("fakejpeg").toString("base64");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitJob(c, id) {
@@ -121,6 +152,7 @@ async function waitJob(c, id) {
       ...process.env, PORT: String(PORT), FAL_KEY: "test", FAL_QUEUE_BASE: `http://127.0.0.1:${FAL_PORT}`,
       STRIPE_SECRET_KEY: "sk_test_x", STRIPE_API_BASE: `http://127.0.0.1:${STRIPE_PORT}`, PUBLIC_URL: "https://shop.example",
       STRIPE_WEBHOOK_SECRET: "",
+      APPLE_ROOT_CERTS_B64: CHAIN.rootB64, APPLE_BUNDLE_ID: "com.realtyphotoai.app",
       ADMIN_EMAILS: "boss@test.com", FREE_CREDITS: "5", REF_BONUS: "10", REF_WELCOME: "3",
     },
     stdio: ["ignore", "inherit", "inherit"],
@@ -256,6 +288,48 @@ async function waitJob(c, id) {
     r = await Boss("GET", "/api/admin/stats");
     assert.equal(r.data.payments.revenue, 0); assert.equal(r.data.payments.refunded, 2900);
     console.log("✓ возвраты: из админки (9,67 € за 20 кр.) и из Stripe Dashboard, без двойного списания");
+
+    // покупки в iOS-приложении (StoreKit 2)
+    r = await B("GET", "/api/me");
+    const token = r.data.user.appAccountToken;
+    assert.match(token, /^[0-9a-f-]{36}$/);
+    assert.equal((await B("GET", "/api/me")).data.user.appAccountToken, token); // стабильный
+    r = await B("GET", "/api/iap/products");
+    assert.equal(r.data.products.find((x) => x.packId === "start").productId, "com.realtyphotoai.app.pack.start");
+    const tx = { transactionId: "2000000111", bundleId: "com.realtyphotoai.app", productId: "com.realtyphotoai.app.pack.start",
+      type: "Consumable", quantity: 1, appAccountToken: token, price: 13990, currency: "EUR", environment: "Sandbox" };
+    const bal0 = (await B("GET", "/api/me")).data.user.credits;
+    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.credited, true); assert.equal(r.data.credits, bal0 + 20);
+    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
+    assert.equal(r.data.credited, false); assert.equal(r.data.credits, bal0 + 20); // повтор — без двойного начисления
+    r = await A("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000112" }) });
+    assert.equal(r.data.error, "wrong_account"); // чужой токен
+    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000113" }, { tamper: true }) });
+    assert.equal(r.data.error, "bad_signature");
+    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000114", bundleId: "com.evil.app" }) });
+    assert.equal(r.data.error, "wrong_bundle");
+    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000115", productId: "x.y" }) });
+    assert.equal(r.data.error, "unknown_product");
+    // подделка с чужим корнем — отклоняется
+    const fakeX5c = [...CHAIN.x5c]; fakeX5c[2] = fakeX5c[1];
+    const fh = b64u(JSON.stringify({ alg: "ES256", x5c: fakeX5c })), fp = b64u(JSON.stringify({ ...tx, transactionId: "2000000116" }));
+    r = await B("POST", "/api/iap/apple", { signedTransaction: `${fh}.${fp}.${b64u(crypto.sign("sha256", Buffer.from(fh + "." + fp), { key: CHAIN.leafKey, dsaEncoding: "ieee-p1363" }))}` });
+    assert.equal(r.data.error, "untrusted_root");
+    // админка видит покупку Apple, возврат через Stripe недоступен
+    r = await Boss("GET", "/api/admin/payments");
+    const ap = r.data.payments.find((x) => x.provider === "apple");
+    assert.equal(ap.amount_cents, 1399); assert.equal(ap.environment, "Sandbox");
+    r = await Boss("POST", "/api/admin/refund", { paymentId: ap.id, credits: 5 });
+    assert.equal(r.data.error, "apple_refunds_via_apple");
+    // Apple присылает REFUND — кредиты списываются
+    const note = appleJWS({ notificationType: "REFUND", data: { bundleId: "com.realtyphotoai.app", signedTransactionInfo: appleJWS(tx) } });
+    let nr = await fetch(`http://127.0.0.1:${PORT}/api/iap/notifications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signedPayload: note }) });
+    assert.equal(nr.status, 200);
+    assert.equal((await B("GET", "/api/me")).data.user.credits, bal0);
+    nr = await fetch(`http://127.0.0.1:${PORT}/api/iap/notifications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signedPayload: note }) });
+    assert.equal((await B("GET", "/api/me")).data.user.credits, bal0); // повтор — без двойного списания
+    console.log("✓ App Store: проверка подписи Apple, привязка к аккаунту, без дублей, возврат по уведомлению Apple");
 
     // демо на главной: генерирует админ, публика видит только опубликованные
     r = await A("POST", "/api/admin/demos", { image: IMG, preset: "staging", prompt: "Stage it" });
