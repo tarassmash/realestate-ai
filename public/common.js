@@ -37,6 +37,7 @@ const I18N = {
     consentTitle: "Перед оплатой", consentText: (p, n) => `Пакет: ${n} фото — ${p}`,
     consentCheck: 'Прошу начать оказание услуги сразу после оплаты и принимаю <a href="/condiciones" target="_blank">Условия</a>. Понимаю, что при отказе в течение 14 дней мне вернут деньги только за неиспользованные кредиты.',
     toPay: "Перейти к оплате", legalNotice: "Юр. информация", privacy: "Конфиденциальность", termsShort: "Условия", cookies: "Cookies",
+    e_payment_provider: "Платёжная система не ответила, попробуйте ещё раз", paidPending: "Оплата обрабатывается банком — кредиты придут автоматически",
     e_network: "Нет связи с сервером", e_default: "Что-то пошло не так",
   },
   es: {
@@ -65,6 +66,7 @@ const I18N = {
     consentTitle: "Antes de pagar", consentText: (p, n) => `Paquete: ${n} fotos — ${p}`,
     consentCheck: 'Solicito que el servicio comience inmediatamente tras el pago y acepto las <a href="/condiciones" target="_blank">Condiciones</a>. Entiendo que, si desisto en 14 días, solo se me reembolsarán los créditos no utilizados.',
     toPay: "Continuar al pago", legalNotice: "Aviso legal", privacy: "Privacidad", termsShort: "Condiciones", cookies: "Cookies",
+    e_payment_provider: "La pasarela de pago no respondió, inténtalo de nuevo", paidPending: "El banco está procesando el pago — los créditos llegarán automáticamente",
     e_network: "Sin conexión con el servidor", e_default: "Algo ha fallado",
   },
   en: {
@@ -93,6 +95,7 @@ const I18N = {
     consentTitle: "Before you pay", consentText: (p, n) => `Pack: ${n} photos — ${p}`,
     consentCheck: 'I request that the service start immediately after payment and accept the <a href="/condiciones" target="_blank">Terms</a>. I understand that if I withdraw within 14 days, only unused credits will be refunded.',
     toPay: "Continue to payment", legalNotice: "Legal notice", privacy: "Privacy", termsShort: "Terms", cookies: "Cookies",
+    e_payment_provider: "The payment provider didn't respond, please try again", paidPending: "Your bank is processing the payment — credits will arrive automatically",
     e_network: "Can't reach the server", e_default: "Something went wrong",
   },
 };

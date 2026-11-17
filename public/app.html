@@ -220,6 +220,9 @@
     <div class="copyrow"><input type="text" id="refLink" readonly /><button class="btn sm" id="copyRef" data-i18n="copy"></button></div>
     <div class="refstats"><div><b id="refInvited">0</b><span data-i18n="invited"></span></div><div><b id="refPaid">0</b><span data-i18n="bought"></span></div></div>
     <hr class="sep" />
+    <h2 data-i18n="myPayments"></h2>
+    <div id="myPayments" class="fine" style="text-align:left"></div>
+    <hr class="sep" />
     <h2 data-i18n="changePass"></h2>
     <input type="password" id="pwCur" data-i18n-ph="curPass" autocomplete="current-password" />
     <input type="password" id="pwNew" data-i18n-ph="newPass" autocomplete="new-password" style="margin-top:8px" />
@@ -248,6 +251,7 @@
 <script>
 // ---------- строки приложения ----------
 Object.assign(PAGE_I18N.ru, {
+  myPayments: "Мои покупки", noPayments: "Покупок пока нет.", receipt: "Чек", invoice: "Счёт (PDF)", refunded: "возврат",
   deleteAcc: "Удалить аккаунт", deleteWarn: "Фото и история будут удалены, неиспользованные кредиты пропадут. Это действие нельзя отменить.",
   tabEdit: "Обработка", tabHistory: "История",
   s1: "1. Фото объекта", dropB: "Перетащите фото сюда", dropS: "или нажмите, чтобы выбрать · JPG, PNG, WebP · можно несколько",
@@ -282,6 +286,7 @@ Object.assign(PAGE_I18N.ru, {
   p_upscale: ["🔍 Только апскейл", "Резкость и разрешение ×2"], p_custom: ["✍️ Своя задача", "Опишите, что изменить"],
 });
 Object.assign(PAGE_I18N.es, {
+  myPayments: "Mis compras", noPayments: "Aún no hay compras.", receipt: "Recibo", invoice: "Factura (PDF)", refunded: "reembolso",
   deleteAcc: "Eliminar cuenta", deleteWarn: "Se borrarán tus fotos e historial y perderás los créditos no usados. No se puede deshacer.",
   tabEdit: "Editar", tabHistory: "Historial",
   s1: "1. Fotos del inmueble", dropB: "Arrastra las fotos aquí", dropS: "o haz clic para elegir · JPG, PNG, WebP · varias a la vez",
@@ -316,6 +321,7 @@ Object.assign(PAGE_I18N.es, {
   p_upscale: ["🔍 Solo escalado", "Nitidez y resolución ×2"], p_custom: ["✍️ Tarea propia", "Describe qué cambiar"],
 });
 Object.assign(PAGE_I18N.en, {
+  myPayments: "My purchases", noPayments: "No purchases yet.", receipt: "Receipt", invoice: "Invoice (PDF)", refunded: "refund",
   deleteAcc: "Delete account", deleteWarn: "Your photos and history will be deleted and unused credits lost. This cannot be undone.",
   tabEdit: "Edit", tabHistory: "History",
   s1: "1. Property photos", dropB: "Drop photos here", dropS: "or click to choose · JPG, PNG, WebP · multiple allowed",
@@ -696,7 +702,21 @@ $("#delGo").onclick = async () => {
   try { await api("/api/me/delete", { password: $("#delPass").value }); location.href = "/"; }
   catch (e) { $("#delErr").textContent = errText(e.code); }
 };
-$("#avatar").onclick = () => { renderAccount(); $("#accDlg").classList.add("show"); };
+$("#avatar").onclick = () => { renderAccount(); loadMyPayments(); $("#accDlg").classList.add("show"); };
+async function loadMyPayments() {
+  const box = $("#myPayments");
+  try {
+    const { payments } = await api("/api/me/payments");
+    box.innerHTML = payments.length ? payments.map((p) => {
+      const links = [p.receipt_url && `<a href="${escapeHtml(p.receipt_url)}" target="_blank" rel="noopener">${t("receipt")}</a>`,
+        (p.invoice_pdf || p.invoice_url) && `<a href="${escapeHtml(p.invoice_pdf || p.invoice_url)}" target="_blank" rel="noopener">${t("invoice")}</a>`].filter(Boolean).join(" · ");
+      return `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+        <span>${new Date(p.created_at).toLocaleDateString(lang === "en" ? "en-GB" : lang)} · ${t("photos", p.credits)} · <b>${money(p.amount_cents, p.currency)}</b>
+        ${p.refunded_cents ? ` <span style="color:var(--warn)">(${t("refunded")} ${money(p.refunded_cents, p.currency)})</span>` : ""}</span>
+        <span>${links}</span></div>`;
+    }).join("") : t("noPayments");
+  } catch { box.textContent = ""; }
+}
 $("#accDlg").addEventListener("click", (e) => { if (e.target.id === "accDlg") $("#accDlg").classList.remove("show"); });
 $("#copyRef").onclick = async () => {
   try { await navigator.clipboard.writeText($("#refLink").value); } catch { $("#refLink").select(); document.execCommand("copy"); }
@@ -734,10 +754,15 @@ async function start() {
   }
   const qs = new URLSearchParams(location.search);
   if (qs.get("paid")) {
-    toast(t("paid"), 5000);
-    // вебхук может прийти через пару секунд — обновим баланс
-    let n = 0; const before = credits;
-    const iv = setInterval(async () => { await refreshMe().catch(() => {}); if (credits > before || ++n > 8) clearInterval(iv); }, 2000);
+    const sid = qs.get("session_id");
+    try {
+      // начисляем сразу по сессии Stripe, не дожидаясь вебхука
+      const r = sid ? await api(`/api/checkout/confirm?session_id=${encodeURIComponent(sid)}`) : null;
+      if (r) setCredits(r.credits);
+      toast(r && !r.paid ? t("paidPending") : t("paid"), 6000);
+    } catch { toast(t("paid"), 5000); }
+    let n = 0;
+    const iv = setInterval(async () => { await refreshMe().catch(() => {}); if (++n > 4) clearInterval(iv); }, 3000);
   }
   if (qs.get("canceled")) toast(t("canceled"));
   if (qs.has("paid") || qs.has("canceled")) history.replaceState(null, "", "/app");

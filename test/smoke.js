@@ -37,16 +37,49 @@ const fal = http.createServer((req, res) => {
     }
   });
 });
-// --- мок Stripe ---
+// --- мок Stripe (мини-API: аккаунт, вебхуки, сессии, возвраты) ---
 let lastCheckout = "";
+const mock = { webhooks: [], sessions: {}, refunds: [] };
 const stripeMock = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
-    lastCheckout = decodeURIComponent(body);
-    res.end(JSON.stringify({ id: "cs_test_" + Date.now(), url: "https://checkout.stripe.com/c/pay/test" }));
+    const u = new URL(req.url, "http://x");
+    const form = new URLSearchParams(body);
+    const json = (o, code = 200) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); };
+    if (req.method === "GET" && u.pathname === "/v1/account")
+      return json({ id: "acct_1", charges_enabled: true, details_submitted: true, country: "ES", settings: { dashboard: { display_name: "Test Shop" } } });
+    if (u.pathname === "/v1/webhook_endpoints" && req.method === "GET") return json({ data: mock.webhooks });
+    if (u.pathname === "/v1/webhook_endpoints" && req.method === "POST") {
+      const ep = { id: "we_" + mock.webhooks.length, url: form.get("url"), status: "enabled", secret: WHSEC,
+        enabled_events: [...form.keys()].filter((k) => k.startsWith("enabled_events")).map((k) => form.get(k)) };
+      mock.webhooks.push(ep);
+      return json(ep);
+    }
+    if (req.method === "POST" && u.pathname === "/v1/checkout/sessions") {
+      lastCheckout = decodeURIComponent(body);
+      const id = "cs_test_" + Object.keys(mock.sessions).length;
+      const metadata = {};
+      for (const [k, v] of form) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m) metadata[m[1]] = v; }
+      mock.sessions[id] = { id, payment_status: "unpaid", status: "open", amount_total: Number(form.get("line_items[0][price_data][unit_amount]")),
+        currency: "eur", client_reference_id: form.get("client_reference_id"), metadata, payment_intent: "pi_" + id };
+      return json({ id, url: "https://checkout.stripe.com/c/pay/" + id });
+    }
+    let m;
+    if (req.method === "GET" && (m = /^\/v1\/checkout\/sessions\/(\w+)$/.exec(u.pathname))) {
+      const s = mock.sessions[m[1]];
+      if (!s) return json({ error: { message: "No such session" } }, 404);
+      return json({ ...s, payment_intent: { id: s.payment_intent, latest_charge: { receipt_url: "https://pay.stripe.com/receipts/" + s.id } },
+        invoice: { hosted_invoice_url: "https://invoice.stripe.com/i/" + s.id, invoice_pdf: "https://invoice.stripe.com/i/" + s.id + "/pdf" } });
+    }
+    if (req.method === "POST" && u.pathname === "/v1/refunds") {
+      mock.refunds.push({ payment_intent: form.get("payment_intent"), amount: Number(form.get("amount")) });
+      return json({ id: "re_" + mock.refunds.length, status: "succeeded" });
+    }
+    json({ error: { message: "unknown " + req.method + " " + u.pathname } }, 404);
   });
 });
+const totalRefunded = (pi) => mock.refunds.filter((r) => r.payment_intent === pi).reduce((a, r) => a + r.amount, 0);
 
 function sign(payload) {
   const t = Math.floor(Date.now() / 1000);
@@ -86,13 +119,19 @@ async function waitJob(c, id) {
   const srv = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
     env: {
       ...process.env, PORT: String(PORT), FAL_KEY: "test", FAL_QUEUE_BASE: `http://127.0.0.1:${FAL_PORT}`,
-      STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: WHSEC, STRIPE_API_BASE: `http://127.0.0.1:${STRIPE_PORT}`,
+      STRIPE_SECRET_KEY: "sk_test_x", STRIPE_API_BASE: `http://127.0.0.1:${STRIPE_PORT}`, PUBLIC_URL: "https://shop.example",
+      STRIPE_WEBHOOK_SECRET: "",
       ADMIN_EMAILS: "boss@test.com", FREE_CREDITS: "5", REF_BONUS: "10", REF_WELCOME: "3",
     },
     stdio: ["ignore", "inherit", "inherit"],
   });
   try {
     for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${PORT}/health`); break; } catch { await sleep(200); } }
+    for (let i = 0; i < 25 && !mock.webhooks.length; i++) await sleep(200);
+    assert.equal(mock.webhooks.length, 1, "вебхук создан автоматически");
+    assert.equal(mock.webhooks[0].url, "https://shop.example/api/stripe/webhook");
+    assert.ok(mock.webhooks[0].enabled_events.includes("charge.refunded"));
+    console.log("✓ Stripe: вебхук создан автоматически по одному ключу");
 
     const A = client("1.1.1.1");
     let r = await A("POST", "/api/auth/register", { email: "Agent@Test.com", password: "short", lang: "es" });
@@ -149,11 +188,22 @@ async function waitJob(c, id) {
     assert.ok(lastCheckout.includes("metadata[terms_version]"));
     assert.ok(lastCheckout.includes("custom_text[submit][message]")); assert.ok(r.data.url.startsWith("https://checkout.stripe.com"));
     assert.ok(lastCheckout.includes("line_items[0][price_data][unit_amount]=2900"));
+    assert.ok(lastCheckout.includes("success_url=https://shop.example/app?paid=1&session_id={CHECKOUT_SESSION_ID}"));
+    assert.ok(lastCheckout.includes("allow_promotion_codes=true"));
+    const sid = r.data.url.split("/").pop();
     const me = (await B("GET", "/api/me")).data.user;
-    const event = JSON.stringify({
-      type: "checkout.session.completed",
-      data: { object: { id: "cs_test_paid_1", payment_status: "paid", amount_total: 2900, currency: "eur", client_reference_id: "x", metadata: { user_id: String((await getId("friend@test.com"))), pack: "pro", credits: "60" } } },
-    });
+    // пока не оплачено — ничего не начисляется
+    r = await B("GET", `/api/checkout/confirm?session_id=${sid}`);
+    assert.equal(r.data.paid, false); assert.equal(r.data.credits, me.credits);
+    // чужую сессию подтвердить нельзя
+    r = await A("GET", `/api/checkout/confirm?session_id=${sid}`);
+    assert.equal(r.status, 403);
+    // клиент оплатил и вернулся со Stripe — кредиты сразу
+    Object.assign(mock.sessions[sid], { payment_status: "paid", status: "complete" });
+    r = await B("GET", `/api/checkout/confirm?session_id=${sid}`);
+    assert.equal(r.data.paid, true); assert.equal(r.data.credits, me.credits + 60);
+    // вебхук приходит позже — двойного начисления нет
+    const event = JSON.stringify({ type: "checkout.session.completed", data: { object: mock.sessions[sid] } });
     let w = await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: event, headers: { "stripe-signature": "t=1,v1=bad" } });
     assert.equal(w.status, 400);
     for (let i = 0; i < 2; i++) {
@@ -165,7 +215,10 @@ async function waitJob(c, id) {
     r = await A("GET", "/api/me");
     assert.equal(r.data.user.credits, 10); // бонус пригласившему
     assert.equal(r.data.referrals.paid, 1);
-    console.log("✓ Stripe: подпись проверяется, кредиты начислены один раз, бонус пригласившему +10");
+    r = await B("GET", "/api/me/payments");
+    assert.equal(r.data.payments.length, 1);
+    assert.ok(r.data.payments[0].receipt_url.includes("/receipts/")); assert.ok(r.data.payments[0].invoice_pdf.endsWith("/pdf"));
+    console.log("✓ Stripe: начисление сразу после оплаты, вебхук без дублей, чек и счёт, бонус пригласившему");
 
     // админка
     r = await A("GET", "/api/admin/stats");
@@ -173,12 +226,36 @@ async function waitJob(c, id) {
     const Boss = client("3.3.3.3");
     await Boss("POST", "/api/auth/register", { email: "boss@test.com", password: "password123", acceptTerms: true });
     r = await Boss("GET", "/api/admin/stats");
-    assert.equal(r.data.payments.revenue, 2900);
+    assert.equal(r.data.payments.revenue, 2900); // до возвратов
     r = await Boss("GET", "/api/admin/users?q=agent");
     assert.equal(r.data.users.length, 1);
     await Boss("POST", "/api/admin/credits", { userId: r.data.users[0].id, delta: 7 });
     assert.equal((await A("GET", "/api/me")).data.user.credits, 17);
     console.log("✓ админка: статистика, поиск, начисление");
+
+    // статус Stripe и возвраты
+    r = await Boss("GET", "/api/admin/stripe");
+    assert.equal(r.data.mode, "test"); assert.equal(r.data.webhook.source, "auto"); assert.ok(r.data.ok);
+    r = await Boss("GET", "/api/admin/payments");
+    const pay = r.data.payments[0];
+    const before = (await B("GET", "/api/me")).data.user.credits;
+    r = await Boss("POST", "/api/admin/refund", { paymentId: pay.id, credits: 20 });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.amount, 967); assert.equal(r.data.creditsRemoved, 20);
+    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 20);
+    // Stripe присылает charge.refunded по этому же возврату — повторно не списываем
+    const pi = pay.payment_intent;
+    let ev = JSON.stringify({ type: "charge.refunded", data: { object: { payment_intent: pi, amount_refunded: totalRefunded(pi) } } });
+    await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev, headers: { "stripe-signature": sign(ev) } });
+    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 20);
+    // полный возврат сделан прямо в Stripe Dashboard — списываем оставшиеся 40
+    ev = JSON.stringify({ type: "charge.refunded", data: { object: { payment_intent: pi, amount_refunded: 2900 } } });
+    await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev, headers: { "stripe-signature": sign(ev) } });
+    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 60);
+    r = await Boss("POST", "/api/admin/refund", { paymentId: pay.id, credits: 1 });
+    assert.equal(r.data.error, "bad_input"); // больше нечего возвращать
+    r = await Boss("GET", "/api/admin/stats");
+    assert.equal(r.data.payments.revenue, 0); assert.equal(r.data.payments.refunded, 2900);
+    console.log("✓ возвраты: из админки (9,67 € за 20 кр.) и из Stripe Dashboard, без двойного списания");
 
     // демо на главной: генерирует админ, публика видит только опубликованные
     r = await A("POST", "/api/admin/demos", { image: IMG, preset: "staging", prompt: "Stage it" });

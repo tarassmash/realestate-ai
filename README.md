@@ -48,13 +48,22 @@ SaaS для агентов недвижимости: улучшение фото
 | `PUBLIC_URL` | нет | Свой домен, напр. `https://fotopro.es` (иначе берётся домен Railway) |
 
 ## Подключение Stripe
-1. Зарегистрируйтесь на https://dashboard.stripe.com и пройдите верификацию (нужна для живых платежей).
-2. **Developers → API keys** → скопируйте *Secret key* → `STRIPE_SECRET_KEY`.
-3. **Developers → Webhooks → Add endpoint**:
-   - URL: `https://ВАШ-ДОМЕН/api/stripe/webhook`
-   - События: `checkout.session.completed`, `checkout.session.async_payment_succeeded`
-   - Скопируйте *Signing secret* → `STRIPE_WEBHOOK_SECRET`.
-4. Тест: используйте ключи `sk_test_...` и карту `4242 4242 4242 4242`.
+Нужен **один ключ** — всё остальное сервер настроит сам.
+1. https://dashboard.stripe.com/apikeys → скопируйте **Secret key** (`sk_test_…` для проверки, `sk_live_…` для реальных денег).
+2. Railway → сервис `web` → Variables → `STRIPE_SECRET_KEY`.
+3. При старте сервер проверит ключ, сам создаст вебхук `https://ВАШ-ДОМЕН/api/stripe/webhook`
+   (события `checkout.session.completed`, `…async_payment_succeeded/failed`, `charge.refunded`) и сохранит его секрет в базе.
+   Статус — в админке, блок «Оплата (Stripe)», кнопка «Проверить / перенастроить».
+4. Тест: карта `4242 4242 4242 4242`, любая будущая дата и CVC. Потом замените ключ на `sk_live_…` — live-вебхук создастся сам.
+
+Что работает:
+- Кредиты начисляются **сразу** после возврата со страницы оплаты (по `session_id`) и дублируются вебхуком — без двойного начисления.
+- Клиенту — чек и счёт (factura, можно указать свой NIF), история покупок в меню аккаунта.
+- Промокоды: создайте в Stripe → Products → Coupons → Promotion codes, поле для кода появится на странице оплаты.
+- Возвраты: в админке «Вернуть» за N неиспользованных кредитов (сумма пропорциональна), или прямо в Stripe Dashboard — кредиты спишутся автоматически.
+- Выручка в админке — за вычетом возвратов.
+- `STRIPE_WEBHOOK_SECRET` нужен только если вебхук настраиваете вручную.
+- `STRIPE_AUTOMATIC_TAX=1` — включить Stripe Tax (IVA считается автоматически; сначала настройте Tax в Stripe Dashboard).
 
 ## Запуск локально
 ```bash

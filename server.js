@@ -152,6 +152,16 @@ const routes = {
     return { user: publicUser(u), referrals: refs.rows[0] };
   },
 
+  "GET /api/me/payments": async (req) => {
+    const u = await requireUser(req);
+    const { rows } = await db.q(
+      `SELECT pack, credits, amount_cents, currency, refunded_cents, receipt_url, invoice_url, invoice_pdf, created_at
+       FROM payments WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      [u.id]
+    );
+    return { payments: rows };
+  },
+
   "POST /api/me/lang": async (req) => {
     const u = await requireUser(req);
     const { lang } = await readJson(req, 1000);
@@ -393,22 +403,62 @@ async function handleCheckout(req, res) {
   if (consent !== true) throw auth.httpErr(400, "consent_required");
   const pack = config.PACKS.find((p) => p.id === packId);
   if (!pack) throw auth.httpErr(400, "bad_pack");
-  const session = await stripe.createCheckout({ user: u, pack, baseUrl: baseUrl(req) });
+  let session;
+  try {
+    session = await stripe.createCheckout({ user: u, pack, baseUrl: baseUrl(req) });
+  } catch (e) {
+    console.error("checkout:", e.message);
+    throw auth.httpErr(502, "payment_provider");
+  }
   send(res, 200, { url: session.url });
 }
 
+// Ссылки на чек и счёт из полной сессии (payment_intent.latest_charge и invoice раскрыты)
+function sessionLinks(s) {
+  const pi = s.payment_intent;
+  const charge = pi && typeof pi === "object" ? pi.latest_charge : null;
+  const inv = s.invoice && typeof s.invoice === "object" ? s.invoice : null;
+  return {
+    paymentIntent: typeof pi === "string" ? pi : pi?.id || null,
+    receiptUrl: charge && typeof charge === "object" ? charge.receipt_url : null,
+    invoiceUrl: inv?.hosted_invoice_url || null,
+    invoicePdf: inv?.invoice_pdf || null,
+  };
+}
+
+// Начисление кредитов за оплаченную сессию. Идемпотентно: повторный вызов ничего не начислит.
 async function fulfill(session) {
+  if (session.payment_status !== "paid") return false;
   const userId = Number(session.metadata?.user_id || session.client_reference_id);
   const credits = Number(session.metadata?.credits);
-  if (!userId || !credits) return console.error("webhook: нет user_id/credits", session.id);
+  if (!userId || !credits) {
+    console.error("fulfill: нет user_id/credits", session.id);
+    return false;
+  }
+  // дотягиваем чек и счёт (не критично, если Stripe не ответит)
+  let links = sessionLinks(session);
+  if (!links.receiptUrl || !links.invoiceUrl) {
+    try { links = { ...links, ...Object.fromEntries(Object.entries(sessionLinks(await stripe.retrieveSession(session.id))).filter(([, v]) => v)) }; }
+    catch (e) { console.error("retrieveSession:", e.message); }
+  }
   const credited = await db.tx(async (c) => {
     const ins = await c.query(
-      `INSERT INTO payments(user_id, stripe_session, pack, credits, amount_cents, currency, consent_at, terms_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
+      `INSERT INTO payments(user_id, stripe_session, pack, credits, amount_cents, currency, consent_at, terms_version,
+                            payment_intent, receipt_url, invoice_url, invoice_pdf)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
       [userId, session.id, session.metadata?.pack || "?", credits, session.amount_total || 0, session.currency || config.CURRENCY,
-       session.metadata?.consent_at || null, session.metadata?.terms_version || null]
+       session.metadata?.consent_at || null, session.metadata?.terms_version || null,
+       links.paymentIntent, links.receiptUrl, links.invoiceUrl, links.invoicePdf]
     );
-    if (!ins.rows.length) return false; // уже начислено (повторный вебхук)
+    if (!ins.rows.length) {
+      // уже начислено — просто дополним ссылки, если появились
+      await c.query(
+        `UPDATE payments SET payment_intent=coalesce(payment_intent,$2), receipt_url=coalesce(receipt_url,$3),
+                invoice_url=coalesce(invoice_url,$4), invoice_pdf=coalesce(invoice_pdf,$5) WHERE stripe_session=$1`,
+        [session.id, links.paymentIntent, links.receiptUrl, links.invoiceUrl, links.invoicePdf]
+      );
+      return false;
+    }
     await db.addCredits(userId, credits, "purchase", session.id, c);
     // Реферальный бонус пригласившему — один раз, после первой оплаты друга
     const r = await c.query(
@@ -419,18 +469,58 @@ async function fulfill(session) {
     return true;
   });
   if (credited) console.log(`Оплата: user ${userId} +${credits} кредитов (${session.id})`);
+  return credited;
+}
+
+// Клиент вернулся со Stripe — начисляем сразу, не дожидаясь вебхука
+async function handleConfirm(req, res, query) {
+  const u = await requireUser(req);
+  const id = String(query.get("session_id") || "");
+  if (!/^cs_[A-Za-z0-9_]+$/.test(id)) throw auth.httpErr(400, "bad_session");
+  if (!config.STRIPE_SECRET_KEY) throw auth.httpErr(503, "payments_off");
+  const s = await stripe.retrieveSession(id);
+  if (Number(s.metadata?.user_id || s.client_reference_id) !== u.id) throw auth.httpErr(403, "forbidden");
+  if (s.payment_status === "paid") await fulfill(s);
+  const me = await db.q("SELECT credits FROM users WHERE id=$1", [u.id]);
+  send(res, 200, { paid: s.payment_status === "paid", pending: s.payment_status === "unpaid" && s.status === "complete", credits: me.rows[0].credits });
+}
+
+// Возврат: списываем кредиты пропорционально возвращённой сумме (не больше, чем есть на балансе)
+async function applyRefund(paymentIntent, totalRefundedCents, source) {
+  return db.tx(async (c) => {
+    const { rows } = await c.query("SELECT * FROM payments WHERE payment_intent=$1 FOR UPDATE", [paymentIntent]);
+    const p = rows[0];
+    if (!p) return null;
+    const delta = Math.min(totalRefundedCents, p.amount_cents) - p.refunded_cents;
+    if (delta <= 0) return { creditsRemoved: 0 };
+    const target = p.amount_cents ? Math.round((Math.min(totalRefundedCents, p.amount_cents) / p.amount_cents) * p.credits) : p.credits;
+    const toRemove = Math.max(0, Math.min(target, p.credits) - p.refunded_credits);
+    const bal = (await c.query("SELECT credits FROM users WHERE id=$1 FOR UPDATE", [p.user_id])).rows[0].credits;
+    const removed = Math.min(toRemove, bal);
+    if (removed > 0) await db.addCredits(p.user_id, -removed, "refund_payment", `${p.stripe_session}:${source}`, c);
+    await c.query(
+      "UPDATE payments SET refunded_cents=$2, refunded_credits=refunded_credits+$3 WHERE id=$1",
+      [p.id, p.refunded_cents + delta, toRemove]
+    );
+    console.log(`Возврат (${source}): ${p.stripe_session} −${delta / 100} ${p.currency}, −${removed} кредитов`);
+    return { creditsRemoved: removed };
+  });
 }
 
 async function handleWebhook(req, res) {
   const raw = await readBody(req, 1024 * 1024);
-  if (!stripe.verifyWebhook(raw, req.headers["stripe-signature"])) return send(res, 400, { error: "bad_signature" });
+  const secret = await stripe.getWebhookSecret();
+  if (!stripe.verifyWebhook(raw, req.headers["stripe-signature"], secret)) return send(res, 400, { error: "bad_signature" });
   const event = JSON.parse(raw);
-  const s = event.data?.object;
-  if (
-    (event.type === "checkout.session.completed" && s.payment_status === "paid") ||
-    event.type === "checkout.session.async_payment_succeeded"
-  ) {
-    await fulfill(s);
+  const o = event.data?.object || {};
+  stripe.setSetting("stripe_last_event_at", new Date().toISOString()).catch(() => {});
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+    await fulfill(o);
+  } else if (event.type === "charge.refunded" && o.payment_intent) {
+    // возврат, сделанный в Stripe Dashboard или из админки, — синхронизируем кредиты
+    await applyRefund(o.payment_intent, o.amount_refunded || 0, "stripe");
+  } else if (event.type === "checkout.session.async_payment_failed") {
+    console.log("Отложенный платёж не прошёл:", o.id);
   }
   send(res, 200, { received: true });
 }
@@ -443,10 +533,43 @@ const adminRoutes = {
       db.q(`SELECT count(*)::int total, count(*) FILTER (WHERE status='done')::int done,
                    count(*) FILTER (WHERE status='failed')::int failed,
                    count(*) FILTER (WHERE created_at > now()-interval '7 days')::int week FROM jobs`),
-      db.q(`SELECT coalesce(sum(amount_cents),0)::int revenue, count(*)::int count, count(DISTINCT user_id)::int payers FROM payments`),
-      db.q(`SELECT coalesce(sum(amount_cents),0)::int revenue FROM payments WHERE created_at > now()-interval '30 days'`),
+      db.q(`SELECT coalesce(sum(amount_cents - refunded_cents),0)::int revenue, count(*)::int count, count(DISTINCT user_id)::int payers,
+                   coalesce(sum(refunded_cents),0)::int refunded FROM payments`),
+      db.q(`SELECT coalesce(sum(amount_cents - refunded_cents),0)::int revenue FROM payments WHERE created_at > now()-interval '30 days'`),
     ]);
     return { users: u.rows[0], jobs: j.rows[0], payments: { ...p.rows[0], revenue30: p30.rows[0].revenue }, currency: config.CURRENCY };
+  },
+  "GET /api/admin/stripe": async () => stripe.getStatus(),
+  "POST /api/admin/stripe/setup": async (req) => stripe.ensureSetup(config.PUBLIC_URL || baseUrl(req)),
+  "GET /api/admin/payments": async () => {
+    const { rows } = await db.q(
+      `SELECT p.id, p.pack, p.credits, p.amount_cents, p.currency, p.refunded_cents, p.refunded_credits, p.created_at,
+              p.receipt_url, p.invoice_url, p.payment_intent, u.email, u.credits AS user_credits
+       FROM payments p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 200`
+    );
+    return { payments: rows, mode: config.STRIPE_SECRET_KEY ? stripe.mode() : null };
+  },
+  // Возврат клиенту за N неиспользованных кредитов (или полностью)
+  "POST /api/admin/refund": async (req) => {
+    const { paymentId, credits } = await readJson(req, 1000);
+    const p = (await db.q("SELECT * FROM payments WHERE id=$1", [Number(paymentId)])).rows[0];
+    if (!p) throw auth.httpErr(404, "not_found");
+    if (!p.payment_intent) throw auth.httpErr(400, "no_payment_intent");
+    const n = Math.trunc(Number(credits));
+    const maxCredits = p.credits - p.refunded_credits;
+    if (!(n > 0 && n <= maxCredits)) throw auth.httpErr(400, "bad_input");
+    const amount = Math.min(p.amount_cents - p.refunded_cents, n === maxCredits ? p.amount_cents - p.refunded_cents : Math.round((p.amount_cents * n) / p.credits));
+    if (amount <= 0) throw auth.httpErr(400, "already_refunded");
+    try {
+      await stripe.refund(p.payment_intent, amount, { payment_id: String(p.id), credits: String(n), source: "admin" });
+    } catch (e) {
+      console.error("refund:", e.message);
+      const err = auth.httpErr(502, "payment_provider");
+      err.detail = e.message;
+      throw err;
+    }
+    const r = await applyRefund(p.payment_intent, p.refunded_cents + amount, "admin");
+    return { ok: true, amount, creditsRemoved: r?.creditsRemoved || 0 };
   },
   "GET /api/admin/users": async (req, res, { query }) => {
     const s = (query.get("q") || "").trim().toLowerCase();
@@ -542,6 +665,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/health") return send(res, 200, { ok: true });
     if (key === "POST /api/stripe/webhook") return await handleWebhook(req, res);
     if (key === "POST /api/checkout") return await handleCheckout(req, res);
+    if (key === "GET /api/checkout/confirm") return await handleConfirm(req, res, query);
     if (key === "GET /api/download") return await handleDownload(req, res, query);
     if (routes[key]) return send(res, 200, await routes[key](req, res, { query }));
     if (pathname === "/api/demos" || pathname.startsWith("/demo-img/") || pathname.startsWith("/api/admin/demos")) {
@@ -561,7 +685,7 @@ const server = http.createServer(async (req, res) => {
     send(res, 405, { error: "method_not_allowed" });
   } catch (e) {
     if (!e.status) console.error(e);
-    if (!res.headersSent) send(res, e.status || 500, { error: e.code || "server_error" });
+    if (!res.headersSent) send(res, e.status || 500, { error: e.code || "server_error", ...(e.detail ? { detail: e.detail } : {}) });
   }
 });
 
@@ -571,6 +695,12 @@ db.init()
       console.log(`${config.BRAND}: http://localhost:${config.PORT}`);
       if (!config.FAL_KEY) console.log("⚠ FAL_KEY не задан — обработка фото недоступна");
       if (!config.STRIPE_SECRET_KEY) console.log("⚠ STRIPE_SECRET_KEY не задан — оплата выключена");
+      else
+        stripe.ensureSetup(config.PUBLIC_URL).then((st) => {
+          console.log(`Stripe (${st.mode}): ${st.account ? st.account.name : "?"}, платежи ${st.account?.chargesEnabled ? "включены" : "НЕ включены"}, вебхук: ${st.webhook?.source || "—"}`);
+          if (st.error) console.log("⚠ Stripe:", st.error);
+          if (st.warning) console.log("⚠ Stripe:", st.warning);
+        });
       if (!config.ADMIN_EMAILS.length) console.log("⚠ ADMIN_EMAILS не задан — админка недоступна");
       const miss = ["name", "nif", "address", "email"].filter((k) => !config.LEGAL[k]);
       if (miss.length) console.log("⚠ Не заполнены данные владельца для Aviso legal:", miss.map((k) => "LEGAL_" + k.toUpperCase()).join(", "));

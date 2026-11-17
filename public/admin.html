@@ -40,6 +40,15 @@
   .dmeta .err { color: var(--warn); font-size: 12px; }
   .pill { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 20px; background: #eee; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
   .pill.on { background: var(--accent); color: #fff; }
+  .pill.bad { background: #fde2d6; color: var(--warn); }
+  .pill.test { background: #fff1d6; color: #8a5a00; }
+  .stripe-box { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .stripe-box .items { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+  .stripe-box .items .lbl { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .stripe-help { background: #fff7e3; border: 1px solid #f0d9a0; border-radius: 12px; padding: 12px 16px; font-size: 14px; margin-top: 10px; }
+  .stripe-help ol { margin: 6px 0 0; padding-left: 20px; }
+  td .refund { display: flex; gap: 6px; align-items: center; }
+  td .refund input { width: 70px; padding: 6px 8px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -50,6 +59,17 @@
 <div class="wrap">
   <h1 style="margin:0 0 16px;letter-spacing:-.02em">Админка</h1>
   <div class="tiles" id="tiles"></div>
+
+  <h2 class="sec">Оплата (Stripe)</h2>
+  <div class="stripe-box" id="stripeBox">Проверяю…</div>
+  <div class="stripe-help" id="stripeHelp" hidden></div>
+  <h3 style="margin:22px 0 8px;font-size:16px">Оплаты</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Дата</th><th>Email</th><th>Пакет</th><th>Сумма</th><th>Возвращено</th><th>Документы</th><th>Возврат за кредиты</th></tr></thead>
+      <tbody id="payRows"></tbody>
+    </table>
+  </div>
 
   <h2 class="sec">Демо на главной</h2>
   <p class="muted">Загрузите реальное фото, выберите инструмент и сгенерируйте результат. Опубликованные пары «до/после» (до 6) показываются на главной странице по порядку. Генерация оплачивается с вашего баланса fal (~$0.15), кредиты не списываются.</p>
@@ -110,9 +130,9 @@ async function loadStats() {
   const s = await api("/api/admin/stats");
   CUR = s.currency;
   const tiles = [
-    [eur(s.payments.revenue), "выручка всего"],
+    [eur(s.payments.revenue), "выручка (за вычетом возвратов)"],
     [eur(s.payments.revenue30), "выручка за 30 дней"],
-    [s.payments.count, `оплат · ${s.payments.payers} платящих`],
+    [s.payments.count, `оплат · ${s.payments.payers} платящих${s.payments.refunded ? ` · возвраты ${eur(s.payments.refunded)}` : ""}`],
     [s.users.total, `пользователей · +${s.users.week} за неделю`],
     [s.users.total ? ((s.payments.payers / s.users.total) * 100).toFixed(1) + "%" : "—", "конверсия в оплату"],
     [s.jobs.done, `фото обработано · ${s.jobs.week} за неделю`],
@@ -155,6 +175,68 @@ $("#rows").addEventListener("click", async (e) => {
   } catch (err) { toast(err.code); }
 });
 $("#search").onclick = loadUsers;
+
+// ---------- Stripe ----------
+const dt = (s) => (s ? new Date(s).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—");
+const cur = (c, cc) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: (cc || CUR).toUpperCase() }).format(c / 100);
+async function loadStripe(force) {
+  let st;
+  try { st = await api(force ? "/api/admin/stripe/setup" : "/api/admin/stripe", force ? {} : undefined); }
+  catch (e) { $("#stripeBox").textContent = "Ошибка: " + e.code; return; }
+  const help = $("#stripeHelp");
+  if (!st.configured) {
+    $("#stripeBox").innerHTML = `<div><span class="pill bad">не подключено</span> Оплата выключена — клиенты не могут купить пакеты.</div>`;
+    help.hidden = false;
+    help.innerHTML = `<b>Как подключить (5 минут):</b><ol>
+      <li>Откройте <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">dashboard.stripe.com/apikeys</a> и скопируйте <b>Secret key</b> (sk_test_… для проверки или sk_live_… для реальных платежей).</li>
+      <li>Railway → проект realestate-ai → сервис <b>web</b> → Variables → добавьте <code>STRIPE_SECRET_KEY</code> с этим ключом.</li>
+      <li>Сервис перезапустится и сам создаст вебхук в Stripe. Обновите эту страницу — здесь появится зелёный статус.</li></ol>`;
+    return;
+  }
+  const ok = (b) => `<span class="pill ${b ? "on" : "bad"}">${b ? "да" : "нет"}</span>`;
+  const wh = st.webhook || {};
+  const whText = { auto: "создан автоматически", env: "из STRIPE_WEBHOOK_SECRET", none: "не создан", error: "ошибка" }[wh.source] || "—";
+  $("#stripeBox").innerHTML = `<div class="items">
+      <div><span class="lbl">Режим</span><span class="pill ${st.mode === "live" ? "on" : "test"}">${st.mode === "live" ? "LIVE — реальные деньги" : "TEST — тестовые платежи"}</span></div>
+      <div><span class="lbl">Аккаунт</span>${escapeHtml(st.account?.name || "—")}</div>
+      <div><span class="lbl">Платежи разрешены</span>${ok(st.account?.chargesEnabled)}</div>
+      <div><span class="lbl">Вебхук</span>${ok(["auto", "env"].includes(wh.source))} ${whText}</div>
+      <div><span class="lbl">Последнее событие</span>${dt(st.lastEventAt)}</div>
+    </div>
+    <button class="btn ghost sm" id="stripeRecheck">Проверить / перенастроить</button>`;
+  $("#stripeRecheck").onclick = () => { $("#stripeBox").textContent = "Проверяю…"; loadStripe(true); };
+  const tips = [];
+  if (st.error) tips.push(`<b>Ошибка:</b> ${escapeHtml(st.error)}`);
+  if (st.warning) tips.push(escapeHtml(st.warning));
+  if (st.account && !st.account.chargesEnabled) tips.push(`Stripe пока не разрешает приём платежей — завершите верификацию аккаунта в <a href="https://dashboard.stripe.com/account/onboarding" target="_blank" rel="noopener">Stripe Dashboard</a> (паспорт/NIE, IBAN, данные бизнеса).`);
+  if (st.mode === "test") tips.push(`Тестовый режим: оплачивайте картой <b>4242 4242 4242 4242</b>, любая будущая дата и CVC. Для реальных платежей замените ключ на <b>sk_live_…</b> в Railway — вебхук для live-режима создастся сам.`);
+  help.hidden = !tips.length;
+  help.innerHTML = tips.join("<br>");
+}
+async function loadPayments() {
+  const { payments } = await api("/api/admin/payments");
+  $("#payRows").innerHTML = payments.map((p) => {
+    const left = p.credits - p.refunded_credits;
+    const suggest = Math.min(left, p.user_credits);
+    const docs = [p.receipt_url && `<a href="${escapeHtml(p.receipt_url)}" target="_blank" rel="noopener">чек</a>`, p.invoice_url && `<a href="${escapeHtml(p.invoice_url)}" target="_blank" rel="noopener">счёт</a>`].filter(Boolean).join(" · ") || "—";
+    return `<tr data-id="${p.id}">
+      <td>${dt(p.created_at)}</td><td>${escapeHtml(p.email)}</td><td>${p.credits} фото</td><td><b>${cur(p.amount_cents, p.currency)}</b></td>
+      <td>${p.refunded_cents ? `${cur(p.refunded_cents, p.currency)} · ${p.refunded_credits} кр.` : "—"}</td><td>${docs}</td>
+      <td>${left > 0 && p.payment_intent ? `<div class="refund"><input type="number" min="1" max="${left}" value="${suggest || left}" title="Сколько кредитов вернуть деньгами">
+        <button class="btn ghost sm" data-a="refund">Вернуть</button></div><div class="fine" style="text-align:left;margin-top:2px">не использовано: ${suggest} из ${left}</div>` : "—"}</td></tr>`;
+  }).join("") || `<tr><td colspan="7">Оплат пока нет</td></tr>`;
+}
+$("#payRows").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-a=refund]"); if (!b) return;
+  const tr = b.closest("tr"), credits = Number(tr.querySelector("input").value);
+  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = `Вернуть за ${credits} кр.?`; return; }
+  b.disabled = true;
+  try {
+    const r = await api("/api/admin/refund", { paymentId: Number(tr.dataset.id), credits });
+    toast(`Возвращено ${cur(r.amount)} · списано ${r.creditsRemoved} кредитов`, 5000);
+    loadPayments(); loadStats(); loadUsers();
+  } catch (err) { toast("Ошибка: " + (err.code === "payment_provider" ? "Stripe отклонил возврат" : err.code), 6000); b.disabled = false; }
+});
 
 // ---------- демо на главной ----------
 const PRESET_RU = { enhance: "✨ Авто‑улучшение", staging: "🛋️ Меблировка", declutter: "🧹 Убрать хлам", empty: "⬜ Пустая комната",
@@ -252,7 +334,7 @@ $("#demos").addEventListener("click", async (e) => {
 $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadUsers(); });
 
 (async () => {
-  try { await loadStats(); await loadUsers(); await loadDemos(); }
+  try { await loadStats(); loadStripe(); loadPayments(); await loadUsers(); await loadDemos(); }
   catch (e) {
     if (e.status === 401) location.href = "/app?login";
     else document.querySelector(".wrap").innerHTML = "<h2>Нет доступа</h2><p>Добавьте свой email в переменную ADMIN_EMAILS на Railway.</p>";
