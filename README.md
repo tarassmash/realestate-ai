@@ -33,7 +33,7 @@ SaaS для агентов недвижимости: улучшение фото
 | `STRIPE_SECRET_KEY` | для оплаты | `sk_live_...` (или `sk_test_...` для теста) |
 | `STRIPE_WEBHOOK_SECRET` | для оплаты | `whsec_...` — см. ниже |
 | `ADMIN_EMAILS` | да | Email(ы) владельца через запятую — доступ к `/admin` |
-| `SUPPORT_EMAIL` | нет | Показывается в подвале и при недоступной оплате |
+| `SUPPORT_EMAIL` | нет | Контактный email (подвал, юр. страницы, счета). По умолчанию — первый адрес из `ADMIN_EMAILS` |
 | `CURRENCY` | нет | По умолчанию `eur` |
 | `FREE_CREDITS` | нет | Бесплатные фото при регистрации (5) |
 | `REF_BONUS` / `REF_WELCOME` | нет | Бонусы рефералки (10 / 3) |
@@ -41,7 +41,7 @@ SaaS для агентов недвижимости: улучшение фото
 | `LEGAL_NAME` | **да** | ФИО (autónomo) или название компании — для Aviso legal |
 | `LEGAL_NIF` | **да** | NIF / NIE / CIF |
 | `LEGAL_ADDRESS` | **да** | Адрес (domicilio) |
-| `LEGAL_EMAIL` | **да** | Email для клиентов и запросов по RGPD |
+| `LEGAL_EMAIL` | нет | Email для запросов по RGPD. По умолчанию — `SUPPORT_EMAIL` или email из `ADMIN_EMAILS` |
 | `LEGAL_PHONE` | нет | Телефон |
 | `LEGAL_REGISTRY` | для компаний | Данные Registro Mercantil (tomo, folio, hoja) |
 | `PRICES_INCLUDE_VAT` | нет | `1` (по умолчанию) — «цены с IVA»; `0` — «без IVA» |
