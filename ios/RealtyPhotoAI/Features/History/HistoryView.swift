@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject private var app: AppModel
-    @EnvironmentObject private var editor: EditorModel
+    @AppStorage("markStaging") private var markStaging = true
     @State private var jobs: [Job] = []
     @State private var loading = false
     @State private var canLoadMore = false
@@ -21,7 +21,7 @@ struct HistoryView: View {
                         .padding(.top, 60)
                     }
                     ForEach(jobs) { job in
-                        HistoryCard(job: job, mark: editor.markStaging) {
+                        HistoryCard(job: job, mark: markStaging) {
                             Task { await delete(job) }
                         }
                     }
@@ -34,7 +34,6 @@ struct HistoryView: View {
                 }
                 .padding()
             }
-            .background(Color.appBackground)
             .navigationTitle(Text("tab.history"))
             .refreshable { await load(reset: true) }
             .task { if jobs.isEmpty { await load(reset: true) } }
@@ -104,7 +103,7 @@ private struct HistoryCard: View {
                     Text("\(Text(LocalizedStringKey(preset.titleKey))) · \(job.createdAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption).foregroundStyle(.secondary)
                     if job.isFailed {
-                        Text("job.failedRefunded").font(.caption).foregroundStyle(.orange)
+                        Text("job.failedNotCounted").font(.caption).foregroundStyle(.orange)
                     }
                 }
                 Spacer()
@@ -121,8 +120,6 @@ private struct HistoryCard: View {
                 }
             }
         }
-        .padding(10)
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.line))
+        .padding(.bottom, 4)
     }
 }

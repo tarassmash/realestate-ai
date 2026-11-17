@@ -40,10 +40,9 @@ struct AuthView: View {
                 if mode == .signup, let free = app.config?.freeCredits, free > 0 {
                     Label(String(format: String(localized: "auth.gift %lld"), free), systemImage: "gift.fill")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.brand)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 VStack(spacing: 12) {
@@ -99,6 +98,8 @@ struct AuthView: View {
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(.primary)
+                .foregroundStyle(Color(uiColor: .systemBackground))
                 .controlSize(.large)
                 .disabled(busy || email.isEmpty || password.isEmpty)
 
@@ -114,7 +115,6 @@ struct AuthView: View {
             .padding(24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color.appBackground)
         .onChange(of: mode) { _, _ in error = nil }
     }
 
@@ -150,7 +150,7 @@ struct CheckboxToggleStyle: ToggleStyle {
             Button { configuration.isOn.toggle() } label: {
                 Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
                     .font(.title3)
-                    .foregroundStyle(configuration.isOn ? Color.brand : Color.secondary)
+                    .foregroundStyle(configuration.isOn ? Color.primary : Color.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityHidden(true)

@@ -39,7 +39,7 @@
 
 <script src="/common.js"></script>
 <script>
-$("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
+$("#brand").innerHTML = BRAND_SVG + "<span class=\"bt\">Realty Photo AI</span>";
 $("#langSlot").outerHTML = langSwitcherHTML();
 
 const DOCS = ["aviso-legal", "privacidad", "condiciones", "cookies"];
@@ -47,7 +47,7 @@ let docId = location.pathname.replace("/", "");
 if (!DOCS.includes(docId)) docId = (location.hash || "").slice(1) || "aviso-legal";
 if (!DOCS.includes(docId)) docId = "aviso-legal";
 
-const UPDATED = { es: "8 de noviembre de 2026", en: "8 November 2026", ru: "8 ноября 2026 г." };
+const UPDATED = { es: "17 de noviembre de 2026", en: "17 November 2026", ru: "17 ноября 2026 г." };
 
 function render() {
   const c = CONFIG || {}, L = c.legal || {};
@@ -162,18 +162,17 @@ es: (x) => ({
         <li>Eres responsable de guardar tu contraseña y de la actividad de tu cuenta.</li>
         <li>El regalo de bienvenida es de uno por persona. Crear varias cuentas para obtenerlo de nuevo o abusar del programa de invitaciones permite suspender las cuentas y anular los créditos gratuitos.</li>
       </ul>
-      <h2>4. Créditos, precios y pago</h2>
+      <h2>4. Suscripción, precio y pago</h2>
       <ul>
-        <li>El servicio funciona con créditos: procesar una foto cuesta 1 crédito y en resolución 4K, 2 créditos. El escalado posterior está incluido.</li>
-        <li>Los precios de los paquetes se muestran en la web antes de la compra, en euros. ${x.vat ? "Los precios incluyen el IVA aplicable." : "Los precios no incluyen el IVA, que se añadirá cuando corresponda."}</li>
-        <li>El pago se realiza a través de Stripe. Tras el pago recibirás la confirmación y la factura por email.</li>
-        <li>Los créditos no caducan mientras el servicio esté activo. No son transferibles ni canjeables por dinero, salvo en los casos de los apartados 5 y 8.</li>
-        <li>Si un procesamiento falla por un error técnico, el crédito se devuelve automáticamente. Cada nuevo intento («Otra versión») consume créditos.</li>
-        <li>Los créditos gratuitos (bienvenida e invitaciones) no tienen valor económico.</li>
+        <li>El servicio se ofrece mediante una <b>suscripción semanal</b> que incluye un número máximo de fotos procesadas por semana, indicado en la web y en la app antes de contratar (procesar una foto en 4K cuenta como 2). Las fotos que no se usan en una semana no se acumulan.</li>
+        <li>Al registrarte recibes unas fotos gratuitas de prueba, sin tarjeta.</li>
+        <li>El precio se muestra antes de la contratación. ${x.vat ? "Incluye los impuestos aplicables." : "No incluye impuestos, que se añadirán cuando corresponda."}</li>
+        <li><b>Renovación automática:</b> la suscripción se renueva y se cobra cada semana hasta que la canceles. Puedes cancelarla en cualquier momento: en la web, desde tu cuenta; si la contrataste en el App Store, desde los ajustes de tu cuenta de Apple. Tras cancelar conservas el acceso hasta el final de la semana pagada.</li>
+        <li>En la web el pago lo procesa Stripe y recibes la factura por email. En la app de iOS el pago lo gestiona Apple según sus condiciones.</li>
+        <li>Si un procesamiento falla por un error técnico, la foto no se descuenta del límite.</li>
       </ul>
       <h2>5. Derecho de desistimiento</h2>
-      <p>Si eres consumidor, tienes derecho a desistir de la compra de un paquete en un plazo de 14 días naturales desde la compra. Al comprar solicitas expresamente que el servicio empiece de inmediato para poder usar los créditos enseguida. Por eso, si desistes, te devolveremos el importe proporcional a los créditos de ese paquete que no hayas utilizado (art. 108.3 del Texto Refundido de la Ley General para la Defensa de los Consumidores y Usuarios). Una vez usados todos los créditos del paquete, el servicio se considera completamente prestado.</p>
-      <p>Para desistir, escribe a ${x.email} indicando tu email de cuenta y la compra; también puedes usar el modelo de formulario de desistimiento del Anexo B de dicha ley. Haremos la devolución en un plazo máximo de 14 días, por el mismo medio de pago. Aplicamos esta misma política a los usuarios profesionales.</p>
+      <p>Si eres consumidor, puedes desistir de la suscripción en los 14 días naturales siguientes a la contratación. Al contratar solicitas expresamente que el servicio empiece de inmediato; por eso, si desistes, te devolveremos el importe proporcional a la parte no utilizada (art. 108.3 del Texto Refundido de la Ley General para la Defensa de los Consumidores y Usuarios). Escribe a ${x.email} o usa el modelo de formulario de desistimiento; la devolución se hará en un máximo de 14 días por el mismo medio de pago. Las compras realizadas en el App Store se reembolsan a través de Apple (reportaproblem.apple.com).</p>
       <h2>6. Uso aceptable</h2>
       <ul>
         <li>Solo puedes subir fotografías sobre las que tengas derechos o autorización.</li>
@@ -184,11 +183,11 @@ es: (x) => ({
       <h2>7. Propiedad de las imágenes</h2>
       <p>Conservas todos los derechos sobre las fotografías que subes y sobre los resultados. Nos concedes únicamente la licencia necesaria para procesarlas, almacenarlas y mostrártelas mientras uses el servicio. No las usamos para publicidad ni para entrenar modelos.</p>
       <h2>8. Disponibilidad y cambios del servicio</h2>
-      <p>Podemos mejorar o sustituir los modelos y funciones. Si el servicio cesa definitivamente, te avisaremos con antelación y te devolveremos la parte proporcional de los créditos de pago no utilizados.</p>
+      <p>Podemos mejorar o sustituir los modelos y funciones. Si el servicio cesa definitivamente, te avisaremos con antelación y te devolveremos la parte proporcional del periodo pagado no utilizado.</p>
       <h2>9. Responsabilidad</h2>
       <p>Salvo dolo o culpa grave, y sin perjuicio de los derechos que la ley reconoce a los consumidores, la responsabilidad del prestador se limita al importe pagado por el usuario en los 12 meses anteriores al hecho que la origine.</p>
       <h2>10. Baja y suspensión</h2>
-      <p>Puedes eliminar tu cuenta en cualquier momento desde la aplicación; los créditos pendientes se pierden, sin perjuicio del derecho de desistimiento. Podemos suspender cuentas que incumplan estas condiciones, previa comunicación salvo en casos graves.</p>
+      <p>Puedes eliminar tu cuenta en cualquier momento desde la aplicación; cancela antes tu suscripción; las fotos no usadas se pierden, sin perjuicio del derecho de desistimiento. Podemos suspender cuentas que incumplan estas condiciones, previa comunicación salvo en casos graves.</p>
       <h2>11. Modificaciones</h2>
       <p>Podemos actualizar estas condiciones. Los cambios relevantes se comunicarán con al menos 15 días de antelación. Los créditos ya comprados conservan las condiciones vigentes en el momento de la compra.</p>
       <h2>12. Ley aplicable y jurisdicción</h2>
@@ -283,18 +282,17 @@ en: (x) => ({
         <li>You are responsible for keeping your password safe and for activity on your account.</li>
         <li>The welcome gift is limited to one per person. Multiple accounts or referral abuse may lead to suspension and cancellation of free credits.</li>
       </ul>
-      <h2>4. Credits, prices and payment</h2>
+      <h2>4. Subscription, price and payment</h2>
       <ul>
-        <li>Processing one photo costs 1 credit; 4K costs 2 credits. Upscaling is included.</li>
-        <li>Pack prices are shown in euros before purchase. ${x.vat ? "Prices include applicable VAT." : "Prices exclude VAT, which will be added where applicable."}</li>
-        <li>Payments are processed by Stripe. You will receive a confirmation and an invoice by email.</li>
-        <li>Credits do not expire while the service is active. They are non-transferable and not redeemable for cash, except as set out in sections 5 and 8.</li>
-        <li>If processing fails due to a technical error, the credit is refunded automatically. Each new attempt (“Another take”) uses credits.</li>
-        <li>Free credits (welcome and referrals) have no monetary value.</li>
+        <li>The service is offered as a <b>weekly subscription</b> that includes a maximum number of processed photos per week, shown on the website and in the app before you subscribe (a 4K photo counts as 2). Unused photos do not carry over.</li>
+        <li>When you sign up you get a few free trial photos, no card required.</li>
+        <li>The price is shown before purchase. ${x.vat ? "It includes applicable taxes." : "Taxes are added where applicable."}</li>
+        <li><b>Auto-renewal:</b> the subscription renews and is charged every week until you cancel it. You can cancel anytime: on the website from your account; if you subscribed in the App Store, from your Apple account settings. After canceling you keep access until the end of the paid week.</li>
+        <li>On the website payments are processed by Stripe and you receive an invoice by email. In the iOS app payment is handled by Apple under its terms.</li>
+        <li>If processing fails due to a technical error, the photo is not counted.</li>
       </ul>
       <h2>5. Right of withdrawal</h2>
-      <p>If you are a consumer, you may withdraw from a pack purchase within 14 calendar days. When buying, you expressly request that the service start immediately. If you withdraw, we will refund the amount proportional to the unused credits of that pack (Art. 108.3 of the Spanish Consumer Protection Act). Once all credits of a pack have been used, the service is fully performed.</p>
-      <p>To withdraw, email ${x.email} with your account email and the purchase, or use the model withdrawal form. We will refund within 14 days using the same payment method. We apply the same policy to business users.</p>
+      <p>If you are a consumer, you may withdraw from the subscription within 14 calendar days of subscribing. When subscribing you expressly request that the service start immediately; if you withdraw, we refund the amount proportional to the unused part (Art. 108.3 of the Spanish Consumer Protection Act). Email ${x.email} or use the model withdrawal form; we refund within 14 days using the same payment method. App Store purchases are refunded through Apple (reportaproblem.apple.com).</p>
       <h2>6. Acceptable use</h2>
       <ul>
         <li>Only upload photos you own or are authorised to use.</li>
@@ -305,11 +303,11 @@ en: (x) => ({
       <h2>7. Ownership of images</h2>
       <p>You keep all rights to your photos and results. You grant us only the licence needed to process, store and display them to you while you use the service. We do not use them for advertising or model training.</p>
       <h2>8. Availability and changes</h2>
-      <p>We may improve or replace models and features. If the service is permanently discontinued, we will give advance notice and refund the proportional part of unused paid credits.</p>
+      <p>We may improve or replace models and features. If the service is permanently discontinued, we will give advance notice and refund the unused part of the paid period.</p>
       <h2>9. Liability</h2>
       <p>Except for wilful misconduct or gross negligence, and without prejudice to statutory consumer rights, the provider's liability is limited to the amount paid by the user in the 12 months before the event giving rise to it.</p>
       <h2>10. Closing and suspension</h2>
-      <p>You can delete your account at any time in the app; remaining credits are forfeited, without prejudice to the right of withdrawal. We may suspend accounts that breach these terms, with prior notice except in serious cases.</p>
+      <p>You can delete your account at any time in the app; cancel your subscription first; unused photos are forfeited, without prejudice to the right of withdrawal. We may suspend accounts that breach these terms, with prior notice except in serious cases.</p>
       <h2>11. Changes</h2>
       <p>Material changes will be notified at least 15 days in advance. Credits already purchased keep the terms in force at the time of purchase.</p>
       <h2>12. Governing law</h2>
@@ -402,18 +400,17 @@ ru: (x) => ({
         <li>Вы отвечаете за сохранность пароля и действия в аккаунте.</li>
         <li>Приветственный бонус — один на человека. За несколько аккаунтов или злоупотребление приглашениями аккаунты могут быть заблокированы, а бесплатные кредиты аннулированы.</li>
       </ul>
-      <h2>4. Кредиты, цены и оплата</h2>
+      <h2>4. Подписка, цена и оплата</h2>
       <ul>
-        <li>Обработка одного фото — 1 кредит, в 4K — 2 кредита. Апскейл включён.</li>
-        <li>Цены пакетов указаны в евро до покупки. ${x.vat ? "Цены включают НДС (IVA)." : "Цены указаны без НДС (IVA), он добавляется, где применимо."}</li>
-        <li>Оплата проходит через Stripe. Подтверждение и счёт приходят на email.</li>
-        <li>Кредиты не сгорают, пока сервис работает. Их нельзя передать или обменять на деньги, кроме случаев из разделов 5 и 8.</li>
-        <li>Если обработка не удалась из-за технической ошибки, кредит возвращается автоматически. Каждая новая попытка («Ещё вариант») расходует кредиты.</li>
-        <li>Бесплатные кредиты (приветственные и за приглашения) не имеют денежной ценности.</li>
+        <li>Сервис предоставляется по <b>еженедельной подписке</b>, которая включает максимальное количество обработанных фото в неделю — оно указано на сайте и в приложении до оформления (фото в 4K считается за 2). Неиспользованные фото на следующую неделю не переносятся.</li>
+        <li>После регистрации вы получаете несколько бесплатных пробных фото, без карты.</li>
+        <li>Цена указывается до покупки. ${x.vat ? "Она включает применимые налоги." : "Налоги добавляются, где применимо."}</li>
+        <li><b>Автопродление:</b> подписка продлевается и оплачивается каждую неделю, пока вы её не отмените. Отменить можно в любой момент: на сайте — в аккаунте; если подписка оформлена в App Store — в настройках аккаунта Apple. После отмены доступ сохраняется до конца оплаченной недели.</li>
+        <li>На сайте платежи обрабатывает Stripe, счёт приходит на email. В iOS-приложении оплату проводит Apple по своим правилам.</li>
+        <li>Если обработка не удалась из-за технической ошибки, фото не засчитывается.</li>
       </ul>
       <h2>5. Право на отказ (desistimiento)</h2>
-      <p>Если вы потребитель, вы можете отказаться от покупки пакета в течение 14 календарных дней. При покупке вы явно просите начать оказание услуги сразу. Поэтому при отказе мы вернём сумму пропорционально неиспользованным кредитам этого пакета (ст. 108.3 Закона Испании о защите прав потребителей). Если все кредиты пакета израсходованы, услуга считается оказанной полностью.</p>
-      <p>Чтобы отказаться, напишите на ${x.email}: укажите email аккаунта и покупку. Можно использовать типовую форму отказа. Возврат — в течение 14 дней тем же способом оплаты. Эти же правила действуют для профессиональных пользователей.</p>
+      <p>Если вы потребитель, вы можете отказаться от подписки в течение 14 календарных дней после оформления. При оформлении вы явно просите начать услугу сразу, поэтому при отказе мы вернём сумму пропорционально неиспользованной части (ст. 108.3 Закона Испании о защите прав потребителей). Напишите на ${x.email} или используйте типовую форму отказа; возврат — в течение 14 дней тем же способом оплаты. Покупки в App Store возвращаются через Apple (reportaproblem.apple.com).</p>
       <h2>6. Допустимое использование</h2>
       <ul>
         <li>Загружайте только фото, на которые у вас есть права или разрешение.</li>
@@ -424,11 +421,11 @@ ru: (x) => ({
       <h2>7. Права на изображения</h2>
       <p>Все права на загруженные фото и результаты остаются у вас. Вы даёте нам только лицензию, необходимую для обработки, хранения и показа фото вам, пока вы пользуетесь сервисом. Мы не используем фото в рекламе и для обучения моделей.</p>
       <h2>8. Доступность и изменения сервиса</h2>
-      <p>Мы можем улучшать или заменять модели и функции. Если сервис будет закрыт навсегда, мы заранее предупредим и вернём пропорциональную часть неиспользованных платных кредитов.</p>
+      <p>Мы можем улучшать или заменять модели и функции. Если сервис будет закрыт навсегда, мы заранее предупредим и вернём стоимость неиспользованной части оплаченного периода.</p>
       <h2>9. Ответственность</h2>
       <p>За исключением умысла и грубой неосторожности и без ущерба для прав потребителей по закону, ответственность исполнителя ограничена суммой, уплаченной пользователем за 12 месяцев до события.</p>
       <h2>10. Удаление аккаунта и блокировка</h2>
-      <p>Вы можете удалить аккаунт в приложении в любой момент; оставшиеся кредиты при этом пропадают (право на отказ сохраняется). Мы можем заблокировать аккаунт за нарушение условий — с предварительным уведомлением, кроме серьёзных случаев.</p>
+      <p>Вы можете удалить аккаунт в приложении в любой момент; сначала отмените подписку; неиспользованные фото пропадают (право на отказ сохраняется). Мы можем заблокировать аккаунт за нарушение условий — с предварительным уведомлением, кроме серьёзных случаев.</p>
       <h2>11. Изменения условий</h2>
       <p>О существенных изменениях сообщим минимум за 15 дней. Для уже купленных кредитов действуют условия на момент покупки.</p>
       <h2>12. Применимое право</h2>

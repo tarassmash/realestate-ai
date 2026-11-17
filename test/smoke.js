@@ -37,9 +37,14 @@ const fal = http.createServer((req, res) => {
     }
   });
 });
-// --- мок Stripe (мини-API: аккаунт, вебхуки, сессии, возвраты) ---
+// --- мок Stripe (мини-API: аккаунт, вебхуки, сессии подписки, подписки, возвраты) ---
 let lastCheckout = "";
-const mock = { webhooks: [], sessions: {}, refunds: [] };
+const mock = { webhooks: [], sessions: {}, subs: {}, refunds: [] };
+const DAY = 86400;
+function newSub(id, userId, startSec) {
+  return { id, object: "subscription", customer: "cus_" + userId, status: "active", cancel_at_period_end: false,
+    metadata: { user_id: String(userId) }, items: { data: [{ current_period_start: startSec, current_period_end: startSec + 7 * DAY }] } };
+}
 const stripeMock = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -47,6 +52,7 @@ const stripeMock = http.createServer((req, res) => {
     const u = new URL(req.url, "http://x");
     const form = new URLSearchParams(body);
     const json = (o, code = 200) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); };
+    let m;
     if (req.method === "GET" && u.pathname === "/v1/account")
       return json({ id: "acct_1", charges_enabled: true, details_submitted: true, country: "ES", settings: { dashboard: { display_name: "Test Shop" } } });
     if (u.pathname === "/v1/webhook_endpoints" && req.method === "GET") return json({ data: mock.webhooks });
@@ -60,17 +66,20 @@ const stripeMock = http.createServer((req, res) => {
       lastCheckout = decodeURIComponent(body);
       const id = "cs_test_" + Object.keys(mock.sessions).length;
       const metadata = {};
-      for (const [k, v] of form) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m) metadata[m[1]] = v; }
-      mock.sessions[id] = { id, payment_status: "unpaid", status: "open", amount_total: Number(form.get("line_items[0][price_data][unit_amount]")),
-        currency: "eur", client_reference_id: form.get("client_reference_id"), metadata, payment_intent: "pi_" + id };
+      for (const [k, v] of form) { const mm = /^metadata\[(\w+)\]$/.exec(k); if (mm) metadata[mm[1]] = v; }
+      mock.sessions[id] = { id, mode: form.get("mode"), status: "open", payment_status: "unpaid", client_reference_id: form.get("client_reference_id"), metadata, subscription: null, invoice: null };
       return json({ id, url: "https://checkout.stripe.com/c/pay/" + id });
     }
-    let m;
     if (req.method === "GET" && (m = /^\/v1\/checkout\/sessions\/(\w+)$/.exec(u.pathname))) {
       const s = mock.sessions[m[1]];
       if (!s) return json({ error: { message: "No such session" } }, 404);
-      return json({ ...s, payment_intent: { id: s.payment_intent, latest_charge: { receipt_url: "https://pay.stripe.com/receipts/" + s.id } },
-        invoice: { hosted_invoice_url: "https://invoice.stripe.com/i/" + s.id, invoice_pdf: "https://invoice.stripe.com/i/" + s.id + "/pdf" } });
+      return json({ ...s, subscription: s.subscription ? mock.subs[s.subscription] : null });
+    }
+    if ((m = /^\/v1\/subscriptions\/(\w+)$/.exec(u.pathname))) {
+      const sub = mock.subs[m[1]];
+      if (!sub) return json({ error: { message: "No such subscription" } }, 404);
+      if (req.method === "POST" && form.has("cancel_at_period_end")) sub.cancel_at_period_end = form.get("cancel_at_period_end") === "true";
+      return json(sub);
     }
     if (req.method === "POST" && u.pathname === "/v1/refunds") {
       mock.refunds.push({ payment_intent: form.get("payment_intent"), amount: Number(form.get("amount")) });
@@ -79,7 +88,6 @@ const stripeMock = http.createServer((req, res) => {
     json({ error: { message: "unknown " + req.method + " " + u.pathname } }, 404);
   });
 });
-const totalRefunded = (pi) => mock.refunds.filter((r) => r.payment_intent === pi).reduce((a, r) => a + r.amount, 0);
 
 function sign(payload) {
   const t = Math.floor(Date.now() / 1000);
@@ -153,7 +161,7 @@ async function waitJob(c, id) {
       STRIPE_SECRET_KEY: "sk_test_x", STRIPE_API_BASE: `http://127.0.0.1:${STRIPE_PORT}`, PUBLIC_URL: "https://shop.example",
       STRIPE_WEBHOOK_SECRET: "",
       APPLE_ROOT_CERTS_B64: CHAIN.rootB64, APPLE_BUNDLE_ID: "com.realtyphotoai.app",
-      ADMIN_EMAILS: "boss@test.com", FREE_CREDITS: "5", REF_BONUS: "10", REF_WELCOME: "3",
+      ADMIN_EMAILS: "boss@test.com", FREE_CREDITS: "5", SUB_WEEKLY_LIMIT: "3", SUB_PRICE: "999", SUB_CURRENCY: "usd", REF_BONUS: "10", REF_WELCOME: "3",
     },
     stdio: ["ignore", "inherit", "inherit"],
   });
@@ -195,7 +203,7 @@ async function waitJob(c, id) {
 
     for (let i = 0; i < 4; i++) await A("POST", "/api/jobs", { preset: "upscale", image: IMG });
     r = await A("POST", "/api/jobs", { preset: "upscale", image: IMG });
-    assert.equal(r.status, 402); assert.equal(r.data.error, "no_credits");
+    assert.equal(r.status, 402); assert.equal(r.data.error, "subscription_required");
     console.log("✓ без кредитов — 402");
 
     r = await A("GET", "/api/jobs");
@@ -212,45 +220,74 @@ async function waitJob(c, id) {
     assert.equal(r.data.user.credits, 5);
     console.log("✓ рефералка: +3 приглашённому, защита от самоприглашения");
 
-    // оплата B
-    r = await B("POST", "/api/checkout", { pack: "pro" });
+    // подписка B через Stripe
+    r = await B("POST", "/api/checkout", {});
     assert.equal(r.data.error, "consent_required");
-    r = await B("POST", "/api/checkout", { pack: "pro", consent: true });
+    r = await B("POST", "/api/checkout", { consent: true });
     assert.equal(r.status, 200);
-    assert.ok(lastCheckout.includes("metadata[terms_version]"));
-    assert.ok(lastCheckout.includes("custom_text[submit][message]")); assert.ok(r.data.url.startsWith("https://checkout.stripe.com"));
-    assert.ok(lastCheckout.includes("line_items[0][price_data][unit_amount]=2900"));
+    assert.ok(lastCheckout.includes("mode=subscription"));
+    assert.ok(lastCheckout.includes("line_items[0][price_data][recurring][interval]=week"));
+    assert.ok(lastCheckout.includes("line_items[0][price_data][unit_amount]=999"));
+    assert.ok(lastCheckout.includes("line_items[0][price_data][currency]=usd"));
     assert.ok(lastCheckout.includes("success_url=https://shop.example/app?paid=1&session_id={CHECKOUT_SESSION_ID}"));
-    assert.ok(lastCheckout.includes("allow_promotion_codes=true"));
     const sid = r.data.url.split("/").pop();
-    const me = (await B("GET", "/api/me")).data.user;
-    // пока не оплачено — ничего не начисляется
+    const bId = await getId("friend@test.com");
     r = await B("GET", `/api/checkout/confirm?session_id=${sid}`);
-    assert.equal(r.data.paid, false); assert.equal(r.data.credits, me.credits);
-    // чужую сессию подтвердить нельзя
+    assert.equal(r.data.subscription.active, false);
     r = await A("GET", `/api/checkout/confirm?session_id=${sid}`);
-    assert.equal(r.status, 403);
-    // клиент оплатил и вернулся со Stripe — кредиты сразу
-    Object.assign(mock.sessions[sid], { payment_status: "paid", status: "complete" });
+    assert.equal(r.status, 403); // чужая сессия
+    // клиент оплатил
+    const now = Math.floor(Date.now() / 1000);
+    mock.subs.sub_b = newSub("sub_b", bId, now - 60);
+    Object.assign(mock.sessions[sid], { status: "complete", payment_status: "paid", subscription: "sub_b", customer: "cus_" + bId,
+      invoice: { id: "in_1", amount_paid: 999, currency: "usd", payment_intent: "pi_in_1", hosted_invoice_url: "https://invoice.stripe.com/i/in_1", invoice_pdf: "https://invoice.stripe.com/i/in_1/pdf" } });
     r = await B("GET", `/api/checkout/confirm?session_id=${sid}`);
-    assert.equal(r.data.paid, true); assert.equal(r.data.credits, me.credits + 60);
-    // вебхук приходит позже — двойного начисления нет
-    const event = JSON.stringify({ type: "checkout.session.completed", data: { object: mock.sessions[sid] } });
-    let w = await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: event, headers: { "stripe-signature": "t=1,v1=bad" } });
+    assert.equal(r.data.subscription.active, true); assert.equal(r.data.subscription.provider, "stripe");
+    assert.deepEqual(r.data.usage, { used: 0, limit: 3, remaining: 3 });
+    r = await B("POST", "/api/checkout", { consent: true });
+    assert.equal(r.data.error, "already_subscribed");
+    // вебхук приходит позже — без дублей
+    const ev1 = JSON.stringify({ type: "checkout.session.completed", data: { object: { ...mock.sessions[sid] } } });
+    let w = await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev1, headers: { "stripe-signature": "t=1,v1=bad" } });
     assert.equal(w.status, 400);
     for (let i = 0; i < 2; i++) {
-      w = await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: event, headers: { "stripe-signature": sign(event) } });
+      w = await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev1, headers: { "stripe-signature": sign(ev1) } });
       assert.equal(w.status, 200);
     }
-    r = await B("GET", "/api/me");
-    assert.equal(r.data.user.credits, me.credits + 60);
-    r = await A("GET", "/api/me");
-    assert.equal(r.data.user.credits, 10); // бонус пригласившему
-    assert.equal(r.data.referrals.paid, 1);
     r = await B("GET", "/api/me/payments");
-    assert.equal(r.data.payments.length, 1);
-    assert.ok(r.data.payments[0].receipt_url.includes("/receipts/")); assert.ok(r.data.payments[0].invoice_pdf.endsWith("/pdf"));
-    console.log("✓ Stripe: начисление сразу после оплаты, вебхук без дублей, чек и счёт, бонус пригласившему");
+    assert.equal(r.data.payments.length, 1); assert.ok(r.data.payments[0].invoice_pdf.endsWith("/pdf"));
+    r = await A("GET", "/api/me");
+    assert.equal(r.data.user.credits, 10); // бонус пригласившему за первую оплату друга
+    assert.equal(r.data.referrals.paid, 1);
+    console.log("✓ Stripe: недельная подписка $9.99, включается сразу после оплаты, вебхук без дублей, счёт, бонус пригласившему");
+
+    // лимит недели: 3 по подписке (в тесте), дальше — бесплатные кредиты
+    const credB = (await B("GET", "/api/me")).data.credits;
+    for (let i = 0; i < 3; i++) {
+      r = await B("POST", "/api/jobs", { preset: "enhance", prompt: "Enhance this listing photo", image: IMG });
+      assert.equal(r.data.billing, "sub", JSON.stringify(r.data));
+    }
+    assert.equal(r.data.usage.used, 3); assert.equal(r.data.credits, credB);
+    r = await B("POST", "/api/jobs", { preset: "enhance", prompt: "Enhance this listing photo", image: IMG });
+    assert.equal(r.data.billing, "credits"); assert.equal(r.data.credits, credB - 1);
+    console.log("✓ лимит 3 фото за неделю по подписке, сверх — пробные кредиты");
+
+    // отмена и возобновление
+    r = await B("POST", "/api/billing/cancel", {});
+    assert.equal(r.data.subscription.cancelAtPeriodEnd, true); assert.equal(r.data.subscription.active, true);
+    r = await B("POST", "/api/billing/resume", {});
+    assert.equal(r.data.subscription.cancelAtPeriodEnd, false);
+    // продление: новый период, счёт записан, лимит обнулился
+    mock.subs.sub_b.items.data[0] = { current_period_start: now + 7 * DAY - 10, current_period_end: now + 14 * DAY };
+    const evRenew = JSON.stringify({ type: "invoice.paid", data: { object: { id: "in_2", subscription: "sub_b", amount_paid: 999, currency: "usd", payment_intent: "pi_in_2" } } });
+    await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: evRenew, headers: { "stripe-signature": sign(evRenew) } });
+    assert.equal((await B("GET", "/api/me/payments")).data.payments.length, 2);
+    // подписка удалена в Stripe → доступ закрыт
+    const evDel = JSON.stringify({ type: "customer.subscription.deleted", data: { object: { ...mock.subs.sub_b, status: "canceled", ended_at: now } } });
+    await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: evDel, headers: { "stripe-signature": sign(evDel) } });
+    r = await B("GET", "/api/me");
+    assert.equal(r.data.subscription.active, false);
+    console.log("✓ отмена/возобновление, продление по invoice.paid, завершение по subscription.deleted");
 
     // админка
     r = await A("GET", "/api/admin/stats");
@@ -258,78 +295,74 @@ async function waitJob(c, id) {
     const Boss = client("3.3.3.3");
     await Boss("POST", "/api/auth/register", { email: "boss@test.com", password: "password123", acceptTerms: true });
     r = await Boss("GET", "/api/admin/stats");
-    assert.equal(r.data.payments.revenue, 2900); // до возвратов
+    assert.equal(r.data.payments.revenue, 1998); // две недели подписки
+    assert.equal(r.data.users.subscribers, 0);
     r = await Boss("GET", "/api/admin/users?q=agent");
     assert.equal(r.data.users.length, 1);
     await Boss("POST", "/api/admin/credits", { userId: r.data.users[0].id, delta: 7 });
     assert.equal((await A("GET", "/api/me")).data.user.credits, 17);
     console.log("✓ админка: статистика, поиск, начисление");
 
-    // статус Stripe и возвраты
+    // статус Stripe и возврат по счёту подписки
     r = await Boss("GET", "/api/admin/stripe");
     assert.equal(r.data.mode, "test"); assert.equal(r.data.webhook.source, "auto"); assert.ok(r.data.ok);
-    r = await Boss("GET", "/api/admin/payments");
-    const pay = r.data.payments[0];
-    const before = (await B("GET", "/api/me")).data.user.credits;
-    r = await Boss("POST", "/api/admin/refund", { paymentId: pay.id, credits: 20 });
-    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.amount, 967); assert.equal(r.data.creditsRemoved, 20);
-    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 20);
-    // Stripe присылает charge.refunded по этому же возврату — повторно не списываем
-    const pi = pay.payment_intent;
-    let ev = JSON.stringify({ type: "charge.refunded", data: { object: { payment_intent: pi, amount_refunded: totalRefunded(pi) } } });
+    let ev = JSON.stringify({ type: "charge.refunded", data: { object: { payment_intent: "pi_in_2", amount_refunded: 999 } } });
     await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev, headers: { "stripe-signature": sign(ev) } });
-    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 20);
-    // полный возврат сделан прямо в Stripe Dashboard — списываем оставшиеся 40
-    ev = JSON.stringify({ type: "charge.refunded", data: { object: { payment_intent: pi, amount_refunded: 2900 } } });
-    await fetch(`http://127.0.0.1:${PORT}/api/stripe/webhook`, { method: "POST", body: ev, headers: { "stripe-signature": sign(ev) } });
-    assert.equal((await B("GET", "/api/me")).data.user.credits, before - 60);
-    r = await Boss("POST", "/api/admin/refund", { paymentId: pay.id, credits: 1 });
-    assert.equal(r.data.error, "bad_input"); // больше нечего возвращать
     r = await Boss("GET", "/api/admin/stats");
-    assert.equal(r.data.payments.revenue, 0); assert.equal(r.data.payments.refunded, 2900);
-    console.log("✓ возвраты: из админки (9,67 € за 20 кр.) и из Stripe Dashboard, без двойного списания");
+    assert.equal(r.data.payments.revenue, 999); assert.equal(r.data.payments.refunded, 999);
+    console.log("✓ возврат в Stripe Dashboard учитывается в выручке");
 
-    // покупки в iOS-приложении (StoreKit 2)
-    r = await B("GET", "/api/me");
+    // подписка в iOS-приложении (StoreKit 2)
+    const C = client("5.5.5.5");
+    await C("POST", "/api/auth/register", { email: "ios@test.com", password: "password123", acceptTerms: true });
+    r = await C("GET", "/api/me");
     const token = r.data.user.appAccountToken;
     assert.match(token, /^[0-9a-f-]{36}$/);
-    assert.equal((await B("GET", "/api/me")).data.user.appAccountToken, token); // стабильный
-    r = await B("GET", "/api/iap/products");
-    assert.equal(r.data.products.find((x) => x.packId === "start").productId, "com.realtyphotoai.app.pack.start");
-    const tx = { transactionId: "2000000111", bundleId: "com.realtyphotoai.app", productId: "com.realtyphotoai.app.pack.start",
-      type: "Consumable", quantity: 1, appAccountToken: token, price: 13990, currency: "EUR", environment: "Sandbox" };
-    const bal0 = (await B("GET", "/api/me")).data.user.credits;
-    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
-    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.credited, true); assert.equal(r.data.credits, bal0 + 20);
-    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
-    assert.equal(r.data.credited, false); assert.equal(r.data.credits, bal0 + 20); // повтор — без двойного начисления
-    r = await A("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000112" }) });
+    assert.equal((await C("GET", "/api/me")).data.user.appAccountToken, token);
+    r = await C("GET", "/api/iap/products");
+    assert.equal(r.data.subscription, "com.realtyphotoai.app.weekly");
+    const t0 = Date.now();
+    const tx = { transactionId: "3000000001", originalTransactionId: "3000000001", bundleId: "com.realtyphotoai.app",
+      productId: "com.realtyphotoai.app.weekly", type: "Auto-Renewable Subscription", appAccountToken: token,
+      purchaseDate: t0 - 1000, expiresDate: t0 + 7 * 864e5, price: 9990, currency: "USD", environment: "Sandbox" };
+    r = await C("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.subscription.active, true); assert.equal(r.data.subscription.provider, "apple");
+    r = await C("POST", "/api/iap/apple", { signedTransaction: appleJWS(tx) });
+    assert.equal(r.status, 200); // повтор безопасен
+    r = await C("POST", "/api/jobs", { preset: "enhance", prompt: "Enhance this listing photo", image: IMG });
+    assert.equal(r.data.billing, "sub");
+    r = await A("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "3000000009" }) });
     assert.equal(r.data.error, "wrong_account"); // чужой токен
-    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000113" }, { tamper: true }) });
+    r = await C("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "3000000002" }, { tamper: true }) });
     assert.equal(r.data.error, "bad_signature");
-    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000114", bundleId: "com.evil.app" }) });
+    r = await C("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, bundleId: "com.evil.app" }) });
     assert.equal(r.data.error, "wrong_bundle");
-    r = await B("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, transactionId: "2000000115", productId: "x.y" }) });
+    r = await C("POST", "/api/iap/apple", { signedTransaction: appleJWS({ ...tx, productId: "x.y" }) });
     assert.equal(r.data.error, "unknown_product");
-    // подделка с чужим корнем — отклоняется
     const fakeX5c = [...CHAIN.x5c]; fakeX5c[2] = fakeX5c[1];
-    const fh = b64u(JSON.stringify({ alg: "ES256", x5c: fakeX5c })), fp = b64u(JSON.stringify({ ...tx, transactionId: "2000000116" }));
-    r = await B("POST", "/api/iap/apple", { signedTransaction: `${fh}.${fp}.${b64u(crypto.sign("sha256", Buffer.from(fh + "." + fp), { key: CHAIN.leafKey, dsaEncoding: "ieee-p1363" }))}` });
+    const fh = b64u(JSON.stringify({ alg: "ES256", x5c: fakeX5c })), fp = b64u(JSON.stringify(tx));
+    r = await C("POST", "/api/iap/apple", { signedTransaction: `${fh}.${fp}.${b64u(crypto.sign("sha256", Buffer.from(fh + "." + fp), { key: CHAIN.leafKey, dsaEncoding: "ieee-p1363" }))}` });
     assert.equal(r.data.error, "untrusted_root");
-    // админка видит покупку Apple, возврат через Stripe недоступен
+    const notify = (type, t, renewal) => fetch(`http://127.0.0.1:${PORT}/api/iap/notifications`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedPayload: appleJWS({ notificationType: type, data: { bundleId: "com.realtyphotoai.app",
+        signedTransactionInfo: appleJWS(t), ...(renewal ? { signedRenewalInfo: appleJWS(renewal) } : {}) } }) }) });
+    // автопродление выключено пользователем
+    await notify("DID_CHANGE_RENEWAL_STATUS", tx, { autoRenewStatus: 0 });
+    assert.equal((await C("GET", "/api/me")).data.subscription.cancelAtPeriodEnd, true);
+    // продление
+    const tx2 = { ...tx, transactionId: "3000000002", purchaseDate: t0 + 7 * 864e5, expiresDate: t0 + 14 * 864e5 };
+    assert.equal((await notify("DID_RENEW", tx2, { autoRenewStatus: 1 })).status, 200);
+    r = await C("GET", "/api/me");
+    assert.ok(new Date(r.data.subscription.expiresAt).getTime() >= t0 + 14 * 864e5 - 1000);
+    assert.equal(r.data.subscription.cancelAtPeriodEnd, false);
+    // возврат Apple — доступ закрывается
+    await notify("REFUND", { ...tx2, revocationDate: Date.now() });
+    assert.equal((await C("GET", "/api/me")).data.subscription.active, false);
     r = await Boss("GET", "/api/admin/payments");
-    const ap = r.data.payments.find((x) => x.provider === "apple");
-    assert.equal(ap.amount_cents, 1399); assert.equal(ap.environment, "Sandbox");
-    r = await Boss("POST", "/api/admin/refund", { paymentId: ap.id, credits: 5 });
-    assert.equal(r.data.error, "apple_refunds_via_apple");
-    // Apple присылает REFUND — кредиты списываются
-    const note = appleJWS({ notificationType: "REFUND", data: { bundleId: "com.realtyphotoai.app", signedTransactionInfo: appleJWS(tx) } });
-    let nr = await fetch(`http://127.0.0.1:${PORT}/api/iap/notifications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signedPayload: note }) });
-    assert.equal(nr.status, 200);
-    assert.equal((await B("GET", "/api/me")).data.user.credits, bal0);
-    nr = await fetch(`http://127.0.0.1:${PORT}/api/iap/notifications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signedPayload: note }) });
-    assert.equal((await B("GET", "/api/me")).data.user.credits, bal0); // повтор — без двойного списания
-    console.log("✓ App Store: проверка подписи Apple, привязка к аккаунту, без дублей, возврат по уведомлению Apple");
+    const ap = r.data.payments.find((x) => x.provider === "apple" && x.payment_intent === "apple:3000000002");
+    assert.equal(ap.amount_cents, 999); assert.equal(ap.refunded_cents, 999); assert.equal(ap.environment, "Sandbox");
+    console.log("✓ App Store: подписка по подписи Apple, привязка к аккаунту, автопродление, продление, возврат");
 
     // демо на главной: генерирует админ, публика видит только опубликованные
     r = await A("POST", "/api/admin/demos", { image: IMG, preset: "staging", prompt: "Stage it" });

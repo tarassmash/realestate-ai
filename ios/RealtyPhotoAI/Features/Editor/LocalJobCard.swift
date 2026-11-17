@@ -4,6 +4,7 @@ struct LocalJobCard: View {
     let job: LocalJob
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var editor: EditorModel
+    @AppStorage("markStaging") private var markStaging = true
 
     init(job: LocalJob) {
         self.job = job
@@ -40,13 +41,12 @@ struct LocalJobCard: View {
                 }
                 Spacer()
                 if job.state == .done, let remote = job.resultURL {
-                    ResultActions(remote: remote, name: job.name, preset: job.preset, mark: editor.markStaging)
+                    ResultActions(remote: remote, name: job.name, preset: job.preset, mark: markStaging)
                 }
                 if job.state == .done || job.state == .failed {
                     Menu {
                         Button {
-                            if job.cost > app.credits { app.show(APIError.message(for: "no_credits")) }
-                            else { editor.retry(job.id, app: app) }
+                            editor.retry(job.id, app: app)
                         } label: { Label(LocalizedStringKey(job.state == .done ? "job.again" : "job.retry"), systemImage: "arrow.clockwise") }
                         Button(role: .destructive) { editor.removeJob(job.id) } label: { Label("common.remove", systemImage: "trash") }
                     } label: {
@@ -57,9 +57,7 @@ struct LocalJobCard: View {
             }
             .padding(.top, 8)
         }
-        .padding(10)
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.line))
+        .padding(.bottom, 4)
     }
 
     private var busyOverlay: some View {

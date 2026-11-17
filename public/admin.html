@@ -112,7 +112,7 @@
   </div>
   <div class="scroll">
     <table>
-      <thead><tr><th>Email</th><th>Кредиты</th><th>Обработок</th><th>Оплатил</th><th>Пригласил</th><th>Регистрация</th><th>Был</th><th>Действия</th></tr></thead>
+      <thead><tr><th>Email</th><th>Подписка</th><th>Кредиты</th><th>Обработок</th><th>Оплатил</th><th>Пригласил</th><th>Регистрация</th><th>Был</th><th>Действия</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -121,7 +121,7 @@
 <script src="/presets.js"></script>
 <script>
 lang = "ru";
-$("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
+$("#brand").innerHTML = BRAND_SVG + "<span class=\"bt\">Realty Photo AI</span>";
 const d = (s) => (s ? new Date(s).toLocaleDateString("ru-RU") : "—");
 let CUR = "eur";
 const eur = (c) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: CUR.toUpperCase() }).format(c / 100);
@@ -133,8 +133,11 @@ async function loadStats() {
     [eur(s.payments.revenue), "выручка (за вычетом возвратов)"],
     [eur(s.payments.revenue30), "выручка за 30 дней"],
     [s.payments.count, `оплат · ${s.payments.payers} платящих${s.payments.refunded ? ` · возвраты ${eur(s.payments.refunded)}` : ""}`],
+    [s.users.subscribers, `активных подписок${s.users.apple_subs ? ` · ${s.users.apple_subs} через App Store` : ""}`],
+    [eur(s.users.subscribers * s.plan.price), `≈ выручка в неделю (подписки × ${eur(s.plan.price)})`],
     [s.users.total, `пользователей · +${s.users.week} за неделю`],
     [s.users.total ? ((s.payments.payers / s.users.total) * 100).toFixed(1) + "%" : "—", "конверсия в оплату"],
+    [`${s.plan.weeklyLimit} фото`, "лимит недели (SUB_WEEKLY_LIMIT)"],
     [s.jobs.done, `фото обработано · ${s.jobs.week} за неделю`],
     [s.jobs.failed, "ошибок обработки (кредит возвращён)"],
   ];
@@ -145,7 +148,9 @@ async function loadUsers() {
   const { users } = await api("/api/admin/users" + (q ? `?q=${encodeURIComponent(q)}` : ""));
   $("#rows").innerHTML = users.map((u) => `
     <tr class="${u.blocked ? "blocked" : ""}" data-id="${u.id}">
-      <td>${escapeHtml(u.email)}</td><td><b>${u.credits}</b></td><td>${u.jobs}</td><td>${u.paid ? eur(u.paid) : "—"}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td>${u.subscribed ? `<span class="pill on">${u.sub_provider === "apple" ? "App Store" : "Stripe"}</span> до ${d(u.sub_expires_at)}${u.sub_cancel_at_period_end ? " · отменена" : ""}` : "—"}</td>
+      <td><b>${u.credits}</b></td><td>${u.jobs}</td><td>${u.paid ? eur(u.paid) : "—"}</td>
       <td>${escapeHtml(u.referred_by || "—")}</td><td>${d(u.created_at)}</td><td>${d(u.last_seen_at)}</td>
       <td><div class="acts">
         <input type="number" placeholder="±кредиты" class="delta" />
@@ -153,7 +158,7 @@ async function loadUsers() {
         <button class="btn ghost sm" data-a="pass">Новый пароль</button>
         <button class="btn ghost sm" data-a="block">${u.blocked ? "Разблокировать" : "Блок"}</button>
       </div></td>
-    </tr>`).join("") || `<tr><td colspan="8">Никого не найдено</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="9">Никого не найдено</td></tr>`;
 }
 $("#rows").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
@@ -220,9 +225,9 @@ async function loadPayments() {
     const suggest = Math.min(left, p.user_credits);
     const docs = [p.receipt_url && `<a href="${escapeHtml(p.receipt_url)}" target="_blank" rel="noopener">чек</a>`, p.invoice_url && `<a href="${escapeHtml(p.invoice_url)}" target="_blank" rel="noopener">счёт</a>`].filter(Boolean).join(" · ") || "—";
     return `<tr data-id="${p.id}">
-      <td>${dt(p.created_at)}</td><td>${escapeHtml(p.email)}</td><td>${p.credits} фото${p.provider === "apple" ? ` <span class="pill">App Store${p.environment === "Sandbox" ? " · sandbox" : ""}</span>` : ""}</td><td><b>${cur(p.amount_cents, p.currency)}</b></td>
+      <td>${dt(p.created_at)}</td><td>${escapeHtml(p.email)}</td><td>${p.pack === "weekly" ? "подписка, неделя" : p.credits + " фото"}${p.provider === "apple" ? ` <span class="pill">App Store${p.environment === "Sandbox" ? " · sandbox" : ""}</span>` : ""}</td><td><b>${cur(p.amount_cents, p.currency)}</b></td>
       <td>${p.refunded_cents ? `${cur(p.refunded_cents, p.currency)} · ${p.refunded_credits} кр.` : "—"}</td><td>${docs}</td>
-      <td>${p.provider === "apple" ? `<span class="fine">возврат — через Apple</span>` : left > 0 && p.payment_intent ? `<div class="refund"><input type="number" min="1" max="${left}" value="${suggest || left}" title="Сколько кредитов вернуть деньгами">
+      <td>${p.provider === "apple" ? `<span class="fine">возврат — через Apple</span>` : p.pack === "weekly" ? `<span class="fine">возврат — в Stripe Dashboard</span>` : left > 0 && p.payment_intent ? `<div class="refund"><input type="number" min="1" max="${left}" value="${suggest || left}" title="Сколько кредитов вернуть деньгами">
         <button class="btn ghost sm" data-a="refund">Вернуть</button></div><div class="fine" style="text-align:left;margin-top:2px">не использовано: ${suggest} из ${left}</div>` : "—"}</td></tr>`;
   }).join("") || `<tr><td colspan="7">Оплат пока нет</td></tr>`;
 }

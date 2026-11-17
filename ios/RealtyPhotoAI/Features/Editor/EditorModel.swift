@@ -17,19 +17,15 @@ struct LocalJob: Identifiable {
     let name: String
     let preset: Preset
     let prompt: String
-    let model: AIModel
-    let resolution: OutputResolution
-    let upscale: Bool
 
     var state: State = .waiting
     var serverId: String?
     var resultURL: String?
     var errorText: String?
     var startedAt: Date?
-
-    var cost: Int { EditorModel.cost(preset: preset, model: model, resolution: resolution) }
 }
 
+/// Экран обработки. Качество фиксировано на лучшем (Pro, 2K) — никаких настроек для пользователя.
 @MainActor
 final class EditorModel: ObservableObject {
     @Published var picked: [PickedPhoto] = []
@@ -37,22 +33,10 @@ final class EditorModel: ObservableObject {
     @Published var style: StagingStyle = .scandi
     @Published var room: RoomType = .auto
     @Published var customText = ""
-    @Published var model: AIModel = .pro
-    @Published var resolution: OutputResolution = .r2K
-    @Published var upscale = false
-    @Published var markStaging = true
     @Published var jobs: [LocalJob] = []
 
     private var active = 0
     private let maxParallel = 3
-
-    nonisolated static func cost(preset: Preset, model: AIModel, resolution: OutputResolution) -> Int {
-        if preset.upscaleOnly { return 1 }
-        return model == .pro && resolution == .r4K ? 2 : 1
-    }
-
-    var costPerPhoto: Int { EditorModel.cost(preset: preset, model: model, resolution: resolution) }
-    var totalCost: Int { picked.count * costPerPhoto }
 
     func add(_ image: UIImage, name: String) {
         picked.append(PickedPhoto(image: ImageTools.resized(image, maxSide: 2560), name: name))
@@ -64,25 +48,23 @@ final class EditorModel: ObservableObject {
 
     /// Поставить выбранные фото в очередь
     func run(app: AppModel) {
+        guard app.canProcess else { app.showPaywall = true; return }
         let prompt = preset.prompt(style: style, room: room, custom: customText)
         for photo in picked {
-            let job = LocalJob(
+            jobs.insert(LocalJob(
                 source: photo.image,
                 thumb: ImageTools.resized(photo.image, maxSide: 900),
                 name: photo.name,
                 preset: preset,
-                prompt: prompt,
-                model: model,
-                resolution: resolution,
-                upscale: upscale && !preset.upscaleOnly
-            )
-            jobs.insert(job, at: 0)
+                prompt: prompt
+            ), at: 0)
         }
         picked.removeAll()
         pump(app: app)
     }
 
     func retry(_ id: UUID, app: AppModel) {
+        guard app.canProcess else { app.showPaywall = true; return }
         guard let i = jobs.firstIndex(where: { $0.id == id }) else { return }
         jobs[i].state = .waiting
         jobs[i].resultURL = nil
@@ -124,13 +106,9 @@ final class EditorModel: ObservableObject {
             }.value
             guard let image = encoded.0, let thumbURI = encoded.1 else { throw APIError(code: "bad_image", status: 0) }
 
-            let body = JobBody(
-                preset: job.preset.id, prompt: job.prompt, model: job.model.rawValue,
-                resolution: job.resolution.rawValue, upscale: job.upscale,
-                image: image, thumb: thumbURI, name: job.name
-            )
+            let body = JobBody(preset: job.preset.id, prompt: job.prompt, image: image, thumb: thumbURI, name: job.name)
             let created: CreateJobResponse = try await APIClient.shared.request("/api/jobs", method: "POST", body: body)
-            app.setCredits(created.credits)
+            app.apply(created.entitlement)
             update(id) { $0.serverId = created.id; $0.state = .processing; $0.startedAt = Date() }
 
             let started = Date()
@@ -138,20 +116,21 @@ final class EditorModel: ObservableObject {
                 try await Task.sleep(for: .seconds(2))
                 let status: JobStatusResponse = try await APIClient.shared.request("/api/jobs/\(created.id)")
                 if status.job.isDone {
-                    app.setCredits(status.credits)
+                    app.apply(status.entitlement)
                     update(id) { $0.state = .done; $0.resultURL = status.job.resultUrl }
                     return
                 }
                 if status.job.isFailed {
-                    app.setCredits(status.credits)
-                    update(id) { $0.state = .failed; $0.errorText = String(localized: "job.failedRefunded") }
+                    app.apply(status.entitlement)
+                    update(id) { $0.state = .failed; $0.errorText = String(localized: "job.failedNotCounted") }
                     return
                 }
                 if Date().timeIntervalSince(started) > 8 * 60 { throw APIError(code: "timeout", status: 0) }
             }
         } catch let error as APIError {
             update(id) { $0.state = .failed; $0.errorText = error.errorDescription }
-            if error.code == "no_credits" { app.show(APIError.message(for: "no_credits")) }
+            if error.code == "subscription_required" { app.showPaywall = true }
+            if error.code == "limit_reached" { app.show(APIError.message(for: "limit_reached")) }
         } catch {
             update(id) { $0.state = .failed; $0.errorText = APIError.message(for: "default") }
         }

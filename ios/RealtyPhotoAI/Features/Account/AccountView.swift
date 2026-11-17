@@ -1,76 +1,94 @@
 import SwiftUI
+import StoreKit
 
 struct AccountView: View {
     @EnvironmentObject private var app: AppModel
-    @State private var showStore = false
+    @EnvironmentObject private var store: PurchaseManager
+    @AppStorage("markStaging") private var markStaging = true
     @State private var showPassword = false
     @State private var showDelete = false
     @State private var confirmLogout = false
+    @State private var manageSubscriptions = false
+
+    private var sub: Subscription? { app.entitlement?.subscription }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    HStack(spacing: 12) {
-                        BrandMark(size: 44)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.user?.email ?? "").font(.headline)
-                            Text(String(format: String(localized: "account.balance %lld"), app.credits))
-                                .font(.subheadline).foregroundStyle(.secondary)
+                    Text(app.user?.email ?? "").font(.headline)
+                }
+
+                // Подписка
+                Section {
+                    if let sub, sub.active {
+                        LabeledContent("account.plan") {
+                            Text(String(format: String(localized: "usage.week %lld %lld"), app.entitlement?.usage.remaining ?? 0, app.weeklyLimit))
                         }
+                        if let date = sub.expiresAt {
+                            LabeledContent(LocalizedStringKey(sub.cancelAtPeriodEnd ? "account.accessUntil" : "account.renews")) {
+                                Text(date.formatted(date: .abbreviated, time: .omitted))
+                            }
+                        }
+                        if sub.provider == "apple" {
+                            Button("account.manageSubscription") { manageSubscriptions = true }
+                        } else {
+                            Text("account.managedOnWeb").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        if app.credits > 0 {
+                            LabeledContent("account.freePhotos", value: "\(app.credits)")
+                        }
+                        Button("usage.subscribe") { app.showPaywall = true }
                     }
-                    Button { showStore = true } label: {
-                        Label("store.buy", systemImage: "cart")
-                    }
-                    NavigationLink { PurchasesView() } label: {
-                        Label("account.purchases", systemImage: "doc.text")
-                    }
+                    Button("sub.restore") { Task { await store.restore() } }
+                    NavigationLink { PurchasesView() } label: { Text("account.purchases") }
+                } header: {
+                    Text("account.subscription")
+                }
+
+                Section {
+                    Toggle("account.mark", isOn: $markStaging)
+                } footer: {
+                    Text("account.markHint")
                 }
 
                 if let url = app.inviteURL {
                     Section {
                         ShareLink(item: url, message: Text(String(format: String(localized: "invite.message %@"), url.absoluteString))) {
-                            Label("invite.share", systemImage: "person.badge.plus")
+                            Text("invite.share")
                         }
-                        if let r = app.referrals {
-                            LabeledContent("invite.registered", value: "\(r.invited)")
-                            LabeledContent("invite.purchased", value: "\(r.paid)")
-                        }
-                    } header: {
-                        Text("invite.title")
                     } footer: {
                         Text(String(format: String(localized: "invite.footer %lld %lld"),
                                     app.config?.refWelcome ?? 3, app.config?.refBonus ?? 10))
                     }
                 }
 
-                Section("account.security") {
-                    Button { showPassword = true } label: { Label("account.changePassword", systemImage: "key") }
-                    Button { confirmLogout = true } label: { Label("account.logout", systemImage: "rectangle.portrait.and.arrow.right") }
-                }
-
-                Section("account.info") {
-                    Link(destination: AppConfig.termsURL) { Label("legal.terms", systemImage: "doc.plaintext") }
-                    Link(destination: AppConfig.privacyURL) { Label("legal.privacy", systemImage: "hand.raised") }
-                    Link(destination: AppConfig.legalNoticeURL) { Label("legal.notice", systemImage: "building.columns") }
+                Section {
+                    Button("account.changePassword") { showPassword = true }
+                    Link(destination: AppConfig.termsURL) { Text("legal.termsOfUse") }
+                    Link(destination: AppConfig.privacyURL) { Text("legal.privacy") }
                     if let support = app.config?.supportEmail, !support.isEmpty, let mail = URL(string: "mailto:\(support)") {
-                        Link(destination: mail) { Label("account.support", systemImage: "envelope") }
+                        Link(destination: mail) { Text("account.support") }
                     }
+                    Button("account.logout") { confirmLogout = true }
                 }
+                .tint(.primary)
 
                 Section {
-                    Button(role: .destructive) { showDelete = true } label: {
-                        Label("account.delete", systemImage: "trash")
-                    }
+                    Button("account.delete", role: .destructive) { showDelete = true }
                 } footer: {
                     Text(String(format: String(localized: "account.version %@"), AppConfig.appVersion))
                 }
             }
             .navigationTitle(Text("tab.account"))
             .refreshable { await app.refreshMe() }
-            .sheet(isPresented: $showStore) { StoreView() }
             .sheet(isPresented: $showPassword) { ChangePasswordView() }
             .sheet(isPresented: $showDelete) { DeleteAccountView() }
+            .manageSubscriptionsSheet(isPresented: $manageSubscriptions)
+            .onChange(of: manageSubscriptions) { _, open in
+                if !open { Task { await app.refreshMe() } }
+            }
             .confirmationDialog(Text("account.logoutConfirm"), isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("account.logout", role: .destructive) { Task { await app.logout() } }
             }
@@ -90,7 +108,7 @@ struct PurchasesView: View {
             ForEach(payments) { p in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text(String(format: String(localized: "store.photos %lld"), p.credits)).font(.headline)
+                        Text(p.pack == "weekly" ? String(localized: "purchases.weekly") : String(format: String(localized: "usage.free %lld"), p.credits)).font(.headline)
                         Spacer()
                         Text(Money.format(cents: p.amountCents, currency: p.currency)).bold()
                     }

@@ -18,7 +18,7 @@ RealtyPhotoAI/
     Editor/       выбор фото (галерея/камера), инструменты, очередь обработки, до/после
     History/      история обработок
     Account/      баланс, покупки, приглашения, смена пароля, удаление аккаунта
-    Store/        StoreKit 2: пакеты фото, проверка покупки на сервере
+    Store/        StoreKit 2: недельная подписка, восстановление покупок, экран подписки
   Components/     слайдер до/после, общие элементы, камера, «Поделиться»
   Utilities/      уменьшение фото, пометка «Виртуальный стейджинг», сохранение в Фото
   Resources/      иконка, цвета, переводы, Privacy Manifest
@@ -30,9 +30,9 @@ RealtyPhotoAI/
 
 | Метод | Назначение |
 |---|---|
-| `GET /api/iap/products` | ID товаров App Store и количество кредитов |
-| `POST /api/iap/apple` | `{ signedTransaction }` — проверка подписи Apple (цепочка до Apple Root CA G3), привязка к аккаунту по `appAccountToken`, начисление без дублей |
-| `POST /api/iap/notifications` | App Store Server Notifications V2 — при `REFUND`/`REVOKE` кредиты списываются |
+| `GET /api/iap/products` | ID подписки в App Store (`<bundle>.weekly`) и лимит недели |
+| `POST /api/iap/apple` | `{ signedTransaction }` — проверка подписи Apple (цепочка до Apple Root CA G3), привязка к аккаунту по `appAccountToken`, включение подписки |
+| `POST /api/iap/notifications` | App Store Server Notifications V2 — продления, отключение автопродления, истечение, возвраты |
 
 Переменная `APPLE_BUNDLE_ID` на сервере должна совпадать с Bundle ID в Xcode (по умолчанию `com.realtyphotoai.app`).
 

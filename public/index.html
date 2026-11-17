@@ -3,380 +3,179 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Realty Photo AI — AI photo editing for real estate agents</title>
-<meta name="description" content="Virtual staging, HDR enhancement, sky replacement and twilight photos for real estate listings in 30 seconds. 5 free photos." />
+<title>Realty Photo AI — listing photos that sell</title>
+<meta name="description" content="AI photo editing for real estate agents: virtual staging, HDR, sky replacement, twilight. One weekly plan." />
 <link rel="stylesheet" href="/common.css" />
 <style>
-  nav.links { display: flex; gap: 22px; }
-  nav.links a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; }
-  nav.links a:hover { color: var(--ink); }
-  @media (max-width: 900px) { nav.links { display: none; } header.top { padding: 12px 16px; } }
+  main { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .hero { text-align: center; padding: 72px 0 40px; }
+  .hero h1 { font-size: clamp(40px, 6.4vw, 72px); line-height: 1; letter-spacing: -.045em; margin: 0 auto 18px; font-weight: 700; max-width: 820px; }
+  .hero p { font-size: 19px; color: var(--muted); margin: 0 auto 30px; max-width: 520px; }
+  .hero .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
 
-  section.block { max-width: 1180px; margin: 0 auto; padding: 72px 24px; }
-  .eyebrow { color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; margin-bottom: 10px; }
-  h2.title { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.03em; line-height: 1.1; margin: 0 0 12px; }
-  p.lead { color: var(--muted); font-size: 18px; max-width: 640px; margin: 0 0 32px; }
-
-  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; max-width: 1180px; margin: 0 auto; padding: 64px 24px 40px; }
-  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; padding-top: 36px; gap: 32px; } }
-  .hero h1 { font-size: clamp(36px, 5.4vw, 60px); line-height: 1.02; letter-spacing: -.04em; margin: 0 0 18px; }
-  .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero p { font-size: 19px; color: var(--muted); margin: 0 0 28px; max-width: 540px; }
-  .hero .ctas { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .hero .note { font-size: 13px; color: var(--muted); margin-top: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
-  .hero .note span::before { content: "✓ "; color: var(--accent); font-weight: 800; }
-
-  .demo { position: relative; aspect-ratio: 3/2; border-radius: 18px; overflow: hidden; box-shadow: 0 24px 60px rgba(31,93,76,.18), 0 2px 6px rgba(0,0,0,.06); background: #ddd; user-select: none; }
+  .demo { position: relative; aspect-ratio: 16/10; border-radius: 24px; overflow: hidden; background: var(--soft); user-select: none; margin: 8px 0 0; }
   .demo > svg, .demo > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .demo .before { clip-path: inset(0 50% 0 0); }
-  .demo .bar { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: #fff; box-shadow: 0 0 8px rgba(0,0,0,.3); pointer-events: none; }
-  .demo .bar::after { content: "⟷"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 42px; height: 42px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 18px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  .demo .bar { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; pointer-events: none; }
+  .demo .bar::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 38px; height: 38px; border-radius: 50%; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.18); }
   .demo input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
-  .demo .tag { position: absolute; top: 14px; padding: 4px 10px; border-radius: 7px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; pointer-events: none; }
-  .demo .tag.l { left: 14px; } .demo .tag.r { right: 14px; }
-  .demo-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; justify-content: center; }
-  .demo-tabs button { border: 1px solid var(--line); background: #fff; border-radius: 30px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); }
-  .demo-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .demo .tag { position: absolute; bottom: 16px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.9); font-size: 12px; font-weight: 600; pointer-events: none; }
+  .demo .tag.l { left: 16px; } .demo .tag.r { right: 16px; }
+  .demo-tabs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+  .demo-tabs button { border: 0; background: none; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+  .demo-tabs button.on { background: var(--soft); color: var(--ink); }
 
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1180px; margin: 0 auto; padding: 8px 24px 0; }
-  .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
-  .stat b { display: block; font-size: 28px; letter-spacing: -.02em; }
-  .stat span { color: var(--muted); font-size: 14px; }
-  @media (max-width: 700px) { .stats { grid-template-columns: 1fr; } }
-
-  .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
-  .feat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-  .feat .ic { font-size: 26px; }
-  .feat h4 { margin: 8px 0 4px; font-size: 17px; }
-  .feat p { margin: 0; color: var(--muted); font-size: 14px; }
-
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
-  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
-  .step { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; position: relative; }
-  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; margin-bottom: 12px; }
-  .step h4 { margin: 0 0 4px; font-size: 18px; }
-  .step p { margin: 0; color: var(--muted); }
-
-  .compare { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
-  .compare span { background: #fff; border: 1px solid var(--line); border-radius: 30px; padding: 6px 12px; }
-  .compare b { color: var(--ink); }
-
-  .ref { background: var(--accent); color: #fff; border-radius: 20px; padding: 40px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
-  .ref h3 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.02em; }
-  .ref p { margin: 0; opacity: .85; font-size: 16px; }
-  @media (max-width: 800px) { .ref { grid-template-columns: 1fr; padding: 28px; } }
-
-  details { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
-  summary { cursor: pointer; font-weight: 700; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
-  summary::after { content: "+"; color: var(--accent); font-size: 22px; line-height: 1; }
-  details[open] summary::after { content: "−"; }
+  section { padding: 96px 0 0; }
+  h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.035em; line-height: 1.08; margin: 0 0 14px; font-weight: 700; }
+  .lead { color: var(--muted); font-size: 17px; margin: 0 0 30px; max-width: 560px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tools span { padding: 9px 14px; border-radius: 999px; background: var(--soft); font-size: 14px; font-weight: 500; }
+  .pricing { display: grid; grid-template-columns: 1fr 380px; gap: 48px; align-items: center; }
+  @media (max-width: 820px) { .pricing { grid-template-columns: 1fr; gap: 24px; } }
+  details { border-top: 1px solid var(--line); padding: 18px 0; }
+  details:last-child { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  summary::after { content: "+"; color: var(--muted); }
+  details[open] summary::after { content: "–"; }
   details p { color: var(--muted); margin: 10px 0 0; }
-
-  .final { text-align: center; }
-  footer { border-top: 1px solid var(--line); padding: 28px 24px; text-align: center; color: var(--muted); font-size: 13px; }
+  footer { max-width: 1040px; margin: 96px auto 0; padding: 28px 24px 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+  footer a { color: var(--muted); }
 </style>
 </head>
 <body>
 <header class="top">
   <a class="brand" href="/" id="brand"></a>
-  <nav class="links">
-    <a href="#features" data-i18n="navFeatures"></a>
-    <a href="#pricing" data-i18n="navPricing"></a>
-    <a href="#faq" data-i18n="navFaq"></a>
-  </nav>
   <div class="hright">
     <span id="langSlot"></span>
     <button class="btn ghost sm" id="loginBtn" data-i18n="login"></button>
-    <button class="btn sm" id="ctaTop" data-i18n="tryFree"></button>
   </div>
 </header>
 
-<div class="hero">
-  <div>
-    <div class="eyebrow" data-i18n="heroEyebrow"></div>
-    <h1 data-i18n-html="heroTitle"></h1>
+<main>
+  <div class="hero">
+    <h1 data-i18n="heroTitle"></h1>
     <p data-i18n="heroSub"></p>
-    <div class="ctas">
-      <button class="btn lg" id="ctaHero"></button>
-      <a class="btn ghost lg" href="#pricing" data-i18n="seePrices"></a>
-    </div>
-    <div class="note"><span data-i18n="f_nocard"></span><span data-i18n="noteSec"></span><span data-i18n="noteLang"></span></div>
+    <button class="btn lg" id="ctaHero"></button>
+    <div class="note" id="heroNote"></div>
   </div>
-  <div>
+
   <div class="demo" id="demo">
-    <!-- Реальные пары «до/после» публикуются из админки (/admin → Демо на главной) и заменяют иллюстрацию -->
-    <svg class="after" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <defs>
-        <linearGradient id="wallA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7f2e8"/><stop offset="1" stop-color="#efe6d6"/></linearGradient>
-        <linearGradient id="floorA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6ae7b"/><stop offset="1" stop-color="#b98a56"/></linearGradient>
-        <linearGradient id="skyA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7ec3f2"/><stop offset="1" stop-color="#cfeaff"/></linearGradient>
-        <radialGradient id="glow" cx=".5" cy=".3" r=".6"><stop offset="0" stop-color="#fff6dd" stop-opacity=".9"/><stop offset="1" stop-color="#fff6dd" stop-opacity="0"/></radialGradient>
-      </defs>
-      <rect width="600" height="290" fill="url(#wallA)"/>
-      <rect y="290" width="600" height="110" fill="url(#floorA)"/>
-      <g stroke="#a97b4a" stroke-width="1" opacity=".5"><path d="M0 312h600M0 338h600M0 368h600M60 290l-40 110M180 290l-20 110M300 290v110M420 290l20 110M540 290l40 110"/></g>
-      <rect x="360" y="60" width="170" height="190" rx="4" fill="url(#skyA)" stroke="#fff" stroke-width="10"/>
-      <path d="M445 60v190M360 155h170" stroke="#fff" stroke-width="6"/>
-      <ellipse cx="410" cy="110" rx="26" ry="9" fill="#fff" opacity=".9"/><ellipse cx="490" cy="95" rx="20" ry="7" fill="#fff" opacity=".8"/>
-      <rect width="600" height="400" fill="url(#glow)"/>
-      <!-- картина -->
-      <rect x="110" y="80" width="130" height="90" rx="3" fill="#fff" stroke="#c9b79c" stroke-width="5"/>
-      <path d="M120 160l35-40 25 25 20-15 30 30z" fill="#7aa58f"/><circle cx="210" cy="105" r="10" fill="#f2c14e"/>
-      <!-- ковёр -->
-      <ellipse cx="230" cy="350" rx="190" ry="34" fill="#efe8dc"/>
-      <!-- диван -->
-      <rect x="70" y="230" width="300" height="70" rx="18" fill="#5f7f74"/>
-      <rect x="85" y="200" width="270" height="55" rx="16" fill="#6e8f83"/>
-      <rect x="60" y="235" width="34" height="70" rx="12" fill="#56756a"/><rect x="346" y="235" width="34" height="70" rx="12" fill="#56756a"/>
-      <rect x="110" y="218" width="60" height="40" rx="10" fill="#e7d3a8"/><rect x="270" y="218" width="60" height="40" rx="10" fill="#d9c3b4"/>
-      <path d="M90 305v12M350 305v12" stroke="#3b2e22" stroke-width="5"/>
-      <!-- столик -->
-      <ellipse cx="225" cy="340" rx="70" ry="14" fill="#8a6440"/><path d="M180 345v20M270 345v20" stroke="#6b4c30" stroke-width="5"/>
-      <rect x="200" y="322" width="22" height="16" rx="3" fill="#fff"/><circle cx="250" cy="330" r="8" fill="#7aa58f"/>
-      <!-- торшер -->
-      <path d="M430 300V170" stroke="#3b3b3b" stroke-width="4"/><path d="M405 175h50l-10-35h-30z" fill="#f4e3bd"/><ellipse cx="430" cy="302" rx="18" ry="5" fill="#3b3b3b"/>
-      <circle cx="430" cy="180" r="45" fill="#fff3cf" opacity=".35"/>
-      <!-- растение -->
-      <path d="M520 300l-12-40h44l-12 40z" fill="#c98c5a"/>
-      <g fill="#4f8a62"><ellipse cx="515" cy="235" rx="12" ry="30" transform="rotate(-20 515 235)"/><ellipse cx="545" cy="230" rx="12" ry="32" transform="rotate(18 545 230)"/><ellipse cx="530" cy="220" rx="11" ry="36"/></g>
+    <svg class="after" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <rect width="640" height="290" fill="#f4efe6"/><rect y="290" width="640" height="110" fill="#d8b98f"/>
+      <rect x="400" y="60" width="170" height="190" fill="#bfe1f6" stroke="#fff" stroke-width="10"/>
+      <path d="M485 60v190M400 155h170" stroke="#fff" stroke-width="6"/>
+      <rect x="120" y="85" width="120" height="84" fill="#fff" stroke="#d9cdb8" stroke-width="5"/>
+      <ellipse cx="250" cy="352" rx="200" ry="32" fill="#efe8dc"/>
+      <rect x="80" y="232" width="320" height="68" rx="18" fill="#2f2f2f"/><rect x="96" y="202" width="288" height="52" rx="16" fill="#3a3a3a"/>
+      <rect x="128" y="218" width="60" height="38" rx="10" fill="#e9dcc3"/><rect x="292" y="218" width="60" height="38" rx="10" fill="#d6d0c4"/>
+      <ellipse cx="245" cy="340" rx="70" ry="13" fill="#8a6a4a"/>
+      <path d="M470 300V172" stroke="#222" stroke-width="4"/><path d="M446 176h48l-10-34h-28z" fill="#f2e6cc"/>
+      <path d="M560 300l-12-40h44l-12 40z" fill="#c9a37a"/><ellipse cx="570" cy="230" rx="14" ry="34" fill="#5f8a6a"/>
     </svg>
-    <svg class="before" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <rect width="600" height="290" fill="#cfc8b9"/>
-      <rect y="290" width="600" height="110" fill="#9b8164"/>
-      <g stroke="#7f6850" stroke-width="1" opacity=".5"><path d="M0 312h600M0 338h600M0 368h600M60 290l-40 110M180 290l-20 110M300 290v110M420 290l20 110M540 290l40 110"/></g>
-      <rect x="360" y="60" width="170" height="190" rx="4" fill="#f4f4f2" stroke="#ddd8cc" stroke-width="10"/>
-      <path d="M445 60v190M360 155h170" stroke="#ddd8cc" stroke-width="6"/>
-      <rect x="140" y="320" width="50" height="30" fill="#b9a47f" transform="rotate(-8 165 335)"/>
-      <rect x="200" y="330" width="34" height="22" fill="#a89270" transform="rotate(6 217 341)"/>
-      <path d="M60 300c40 10 70-5 120 8" stroke="#555" stroke-width="2" fill="none"/>
-      <rect width="600" height="400" fill="#3a4a5a" opacity=".12"/>
+    <svg class="before" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <rect width="640" height="290" fill="#cfcac0"/><rect y="290" width="640" height="110" fill="#9f8a70"/>
+      <rect x="400" y="60" width="170" height="190" fill="#efefed" stroke="#dcd7cc" stroke-width="10"/>
+      <path d="M485 60v190M400 155h170" stroke="#dcd7cc" stroke-width="6"/>
+      <rect x="150" y="318" width="50" height="30" fill="#b9a47f" transform="rotate(-8 175 333)"/>
+      <rect width="640" height="400" fill="#3a4450" opacity=".12"/>
     </svg>
     <div class="bar"></div>
     <span class="tag l" data-i18n="before"></span><span class="tag r" data-i18n="after"></span>
     <input type="range" min="0" max="100" value="50" aria-label="before / after" id="demoRange" />
   </div>
   <div class="demo-tabs" id="demoTabs" hidden></div>
-  </div>
-</div>
 
-<div class="stats">
-  <div class="stat"><b data-i18n="stat1b"></b><span data-i18n="stat1"></span></div>
-  <div class="stat"><b data-i18n="stat2b"></b><span data-i18n="stat2"></span></div>
-  <div class="stat"><b data-i18n="stat3b"></b><span data-i18n="stat3"></span></div>
-</div>
+  <section>
+    <h2 data-i18n="toolsTitle"></h2>
+    <p class="lead" data-i18n="toolsLead"></p>
+    <div class="tools" id="tools"></div>
+  </section>
 
-<section class="block" id="features">
-  <div class="eyebrow" data-i18n="featEyebrow"></div>
-  <h2 class="title" data-i18n="featTitle"></h2>
-  <p class="lead" data-i18n="featLead"></p>
-  <div class="features" id="featGrid"></div>
-</section>
+  <section id="pricing" class="pricing">
+    <div>
+      <h2 data-i18n="priceTitle"></h2>
+      <p class="lead" data-i18n="priceLead"></p>
+    </div>
+    <div id="planBox"></div>
+  </section>
 
-<section class="block" style="padding-top:0">
-  <div class="eyebrow" data-i18n="howEyebrow"></div>
-  <h2 class="title" data-i18n="howTitle"></h2>
-  <div class="steps" style="margin-top:28px">
-    <div class="step"><h4 data-i18n="how1t"></h4><p data-i18n="how1"></p></div>
-    <div class="step"><h4 data-i18n="how2t"></h4><p data-i18n="how2"></p></div>
-    <div class="step"><h4 data-i18n="how3t"></h4><p data-i18n="how3"></p></div>
-  </div>
-</section>
+  <section>
+    <h2 data-i18n="faqTitle"></h2>
+    <div id="faqList" style="margin-top:20px"></div>
+  </section>
+</main>
 
-<section class="block" id="pricing" style="padding-top:0">
-  <div class="eyebrow" data-i18n="navPricing"></div>
-  <h2 class="title" data-i18n="priceTitle"></h2>
-  <p class="lead" data-i18n="pricingSub"></p>
-  <div id="pricingBody"></div>
-  <p class="fine" style="text-align:left;margin-top:14px" data-i18n="costNote"></p>
-  <div class="compare">
-    <span data-i18n-html="cmp1"></span><span data-i18n-html="cmp2"></span><span data-i18n-html="cmp3"></span>
-  </div>
-</section>
-
-<section class="block" style="padding-top:0">
-  <div class="ref">
-    <div><h3 data-i18n="refTitle"></h3><p id="refText"></p></div>
-    <button class="btn gold lg" id="ctaRef" data-i18n="tryFree"></button>
-  </div>
-</section>
-
-<section class="block" id="faq" style="padding-top:0;max-width:860px">
-  <div class="eyebrow" data-i18n="navFaq"></div>
-  <h2 class="title" data-i18n="faqTitle" style="margin-bottom:24px"></h2>
-  <div id="faqList"></div>
-</section>
-
-<section class="block final" style="padding-top:0">
-  <h2 class="title" data-i18n="finalTitle"></h2>
-  <p class="lead" style="margin:0 auto 26px" data-i18n="finalSub"></p>
-  <button class="btn lg" id="ctaFinal"></button>
-</section>
-
-<footer><div><span id="year"></span> · <span id="footBrand"></span> · <span data-i18n="footer"></span> <span id="support"></span></div>
-  <div id="legalLinks" style="margin-top:8px"></div></footer>
+<footer><span id="foot"></span><span id="legalLinks"></span></footer>
 
 <script src="/common.js"></script>
 <script>
 Object.assign(PAGE_I18N.ru, {
-  navFeatures: "Возможности", navPricing: "Цены", navFaq: "Вопросы",
-  heroEyebrow: "Для агентов недвижимости",
-  heroTitle: "Фото, которые <em>продают</em> квартиры — за 30 секунд",
-  heroSub: "Виртуальная меблировка, HDR, замена неба и вечерние фото для объявлений. Загрузите снимок с телефона — получите фото уровня профессионального фотографа.",
-  ctaFree: (n) => `Начать бесплатно — ${n} фото в подарок`, seePrices: "Смотреть цены",
-  noteSec: "Результат за 30 секунд", noteLang: "RU · ES · EN",
+  heroTitle: "Фото, которые продают квартиры", heroSub: "Меблировка, HDR, новое небо и вечерний свет — за 30 секунд с телефона.",
+  ctaFree: (n) => `Попробовать — ${n} фото бесплатно`, heroNote: (p) => `Затем ${p} в неделю · отмена в любой момент`,
   before: "До", after: "После",
-  stat1b: "×20 дешевле", stat1: "чем ретушёр или дизайнер (€20–30 за фото)",
-  stat2b: "30 секунд", stat2: "вместо 1–2 дней ожидания",
-  stat3b: "10 инструментов", stat3: "для интерьера и экстерьера в одном месте",
-  featEyebrow: "Возможности", featTitle: "Всё, что нужно для сильного объявления",
-  featLead: "Один клик — и пустая или неухоженная квартира выглядит так, что её хочется посмотреть вживую.",
-  howEyebrow: "Как это работает", howTitle: "Три шага — и фото готовы к публикации",
-  how1t: "Загрузите фото", how1: "Можно сразу всю квартиру: с телефона или камеры, JPG или PNG.",
-  how2t: "Выберите задачу", how2: "Меблировка, HDR, небо, уборка — или опишите своими словами.",
-  how3t: "Скачайте результат", how3: "Сравните «до/после», скачайте в высоком разрешении и публикуйте.",
-  priceTitle: "Платите за фото, а не за подписку",
-  cmp1: "Ретушёр: <b>€20–30</b> за фото", cmp2: "Реальный home staging: <b>€1 500+</b>", cmp3: "У нас: <b>от €0,40</b> за фото",
-  refTitle: "Приглашайте коллег — получайте фото",
-  refText: (b, w) => `Делитесь своей ссылкой: коллега получит +${w} фото к подарку, а вы — +${b} фото после его первой покупки.`,
-  faqTitle: "Частые вопросы",
+  toolsTitle: "Всё в одном месте", toolsLead: "Загрузите снимок, выберите, что сделать, — и скачайте готовое фото.",
+  tools: ["Авто‑улучшение", "Меблировка", "Убрать хлам", "Пустая комната", "Новое небо", "Вечерний свет", "Газон и двор", "Свежий ремонт", "Апскейл 4K", "Своя задача"],
+  priceTitle: "Один тариф", priceLead: "Без пакетов и сложных цен. Обрабатывайте каждую неделю — отмените, когда не нужно.",
+  faqTitle: "Вопросы",
   faq: [
-    ["Нужна ли подписка?", "Нет. Вы покупаете пакет фото, и кредиты не сгорают. Используйте, когда нужно."],
-    ["Что если обработка не удалась?", "Если произошла техническая ошибка, кредит возвращается автоматически. Если не понравился вариант — нажмите «Ещё вариант»."],
-    ["Можно ли публиковать на Idealista, Fotocasa и других порталах?", "Да. Для виртуальной меблировки и замены неба мы по умолчанию добавляем пометку «Виртуальный стейджинг» — так требуют многие порталы и это честно по отношению к покупателю."],
-    ["Будет ли счёт для бухгалтерии?", "Да, после оплаты вы получаете счёт (factura) на email."],
-    ["Меняется ли планировка или окна?", "Нет. ИИ сохраняет стены, окна, двери и ракурс — меняется только то, что вы попросили."],
-    ["Кому принадлежат обработанные фото?", "Вам. Используйте их в объявлениях, соцсетях и рекламе без ограничений."],
-  ],
-  finalTitle: "Попробуйте на своём объекте", finalSub: "Регистрация за 20 секунд, без карты. Первые фото — бесплатно.",
-  footer: "Улучшение фото недвижимости с помощью ИИ.",
-  feats: [
-    ["✨", "Авто‑улучшение", "Свет, HDR без пересвеченных окон, баланс белого, ровные вертикали."],
-    ["🛋️", "Виртуальная меблировка", "Расставит мебель в пустой комнате: 7 стилей, от скандинавского до премиума."],
-    ["🧹", "Убрать хлам", "Уберёт личные вещи, провода, мусор — комната выглядит готовой к показу."],
-    ["⬜", "Пустая комната", "Удалит всю мебель, чтобы покупатель представил своё."],
-    ["☀️", "Замена неба", "Серое небо → голубое, солнечный свет на фасаде."],
-    ["🌆", "Вечерняя съёмка", "Дневной фасад превращается в эффектное фото на закате с огнями в окнах."],
-    ["🌿", "Благоустройство", "Зелёный газон и чистый двор без мусорных баков."],
-    ["🎨", "Освежить ремонт", "Свежая покраска стен, чистые полы и поверхности."],
-    ["🔍", "Апскейл 4K", "Повышение резкости и разрешения для печати и больших экранов."],
-    ["✍️", "Своя задача", "Опишите своими словами: «убери машину», «сделай стены серыми»."],
+    ["Как работает подписка?", "Подписка продлевается каждую неделю. Отменить можно в аккаунте в любой момент — доступ сохранится до конца оплаченной недели."],
+    ["Что если лимит закончился?", "Лимит обновляется в начале каждого оплаченного периода. Если обработка не удалась, фото не засчитывается."],
+    ["Можно публиковать на Idealista и Fotocasa?", "Да. На изменённые фото автоматически добавляется пометка «Виртуальный стейджинг», как требуют порталы."],
+    ["Меняется ли планировка?", "Нет. Стены, окна и ракурс остаются прежними — меняется только то, что вы выбрали."],
   ],
 });
 Object.assign(PAGE_I18N.es, {
-  navFeatures: "Funciones", navPricing: "Precios", navFaq: "Preguntas",
-  heroEyebrow: "Para agentes inmobiliarios",
-  heroTitle: "Fotos que <em>venden</em> pisos — en 30 segundos",
-  heroSub: "Home staging virtual, HDR, cambio de cielo y fotos al atardecer para tus anuncios. Sube una foto del móvil y obtén una imagen de fotógrafo profesional.",
-  ctaFree: (n) => `Empieza gratis — ${n} fotos de regalo`, seePrices: "Ver precios",
-  noteSec: "Resultado en 30 segundos", noteLang: "ES · EN · RU",
+  heroTitle: "Fotos que venden pisos", heroSub: "Amueblado, HDR, cielo nuevo y luz de atardecer — en 30 segundos desde el móvil.",
+  ctaFree: (n) => `Probar — ${n} fotos gratis`, heroNote: (p) => `Después ${p} a la semana · cancela cuando quieras`,
   before: "Antes", after: "Después",
-  stat1b: "×20 más barato", stat1: "que un retocador o diseñador (20–30 € por foto)",
-  stat2b: "30 segundos", stat2: "en lugar de esperar 1–2 días",
-  stat3b: "10 herramientas", stat3: "para interiores y exteriores en un solo sitio",
-  featEyebrow: "Funciones", featTitle: "Todo lo que necesita un anuncio que destaca",
-  featLead: "Un clic y un piso vacío o descuidado se ve como uno que apetece visitar.",
-  howEyebrow: "Cómo funciona", howTitle: "Tres pasos y las fotos están listas para publicar",
-  how1t: "Sube las fotos", how1: "Todo el piso de una vez: del móvil o la cámara, JPG o PNG.",
-  how2t: "Elige la tarea", how2: "Amueblar, HDR, cielo, despejar… o descríbelo con tus palabras.",
-  how3t: "Descarga el resultado", how3: "Compara antes/después, descarga en alta resolución y publica.",
-  priceTitle: "Paga por foto, no por suscripción",
-  cmp1: "Retocador: <b>20–30 €</b> por foto", cmp2: "Home staging real: <b>1.500 €+</b>", cmp3: "Aquí: <b>desde 0,40 €</b> por foto",
-  refTitle: "Invita a compañeros y gana fotos",
-  refText: (b, w) => `Comparte tu enlace: tu compañero recibe +${w} fotos extra y tú +${b} fotos tras su primera compra.`,
-  faqTitle: "Preguntas frecuentes",
+  toolsTitle: "Todo en un sitio", toolsLead: "Sube la foto, elige qué hacer y descarga el resultado.",
+  tools: ["Mejora automática", "Amueblar", "Despejar", "Estancia vacía", "Cielo nuevo", "Atardecer", "Jardín", "Renovar", "Escalado 4K", "Tarea propia"],
+  priceTitle: "Un solo plan", priceLead: "Sin packs ni precios complicados. Úsalo cada semana y cancélalo cuando no lo necesites.",
+  faqTitle: "Preguntas",
   faq: [
-    ["¿Hace falta suscripción?", "No. Compras un pack de fotos y los créditos no caducan. Úsalos cuando los necesites."],
-    ["¿Y si el procesamiento falla?", "Si hay un error técnico, el crédito se devuelve automáticamente. Si no te gusta el resultado, pulsa «Otra versión»."],
-    ["¿Puedo publicar en Idealista, Fotocasa y otros portales?", "Sí. En el amueblado virtual y el cambio de cielo añadimos por defecto la marca «Amueblado virtual», como piden muchos portales."],
-    ["¿Recibo factura?", "Sí, tras el pago recibes la factura por email."],
-    ["¿Cambia la distribución o las ventanas?", "No. La IA mantiene paredes, ventanas, puertas y encuadre; solo cambia lo que pides."],
-    ["¿De quién son las fotos?", "Tuyas. Úsalas en anuncios, redes sociales y publicidad sin límites."],
-  ],
-  finalTitle: "Pruébalo con tu inmueble", finalSub: "Registro en 20 segundos, sin tarjeta. Las primeras fotos son gratis.",
-  footer: "Mejora de fotos inmobiliarias con IA.",
-  feats: [
-    ["✨", "Mejora automática", "Luz, HDR sin ventanas quemadas, balance de blancos, verticales rectas."],
-    ["🛋️", "Home staging virtual", "Amuebla una estancia vacía: 7 estilos, del nórdico al lujo."],
-    ["🧹", "Despejar", "Quita objetos personales, cables y basura: lista para enseñar."],
-    ["⬜", "Estancia vacía", "Elimina todos los muebles para que el comprador imagine los suyos."],
-    ["☀️", "Cambio de cielo", "Cielo gris → azul, luz de sol en la fachada."],
-    ["🌆", "Foto al atardecer", "La fachada de día se convierte en una foto de crepúsculo con luces encendidas."],
-    ["🌿", "Jardín", "Césped verde y patio limpio, sin cubos de basura."],
-    ["🎨", "Renovar", "Paredes recién pintadas, suelos y superficies limpias."],
-    ["🔍", "Escalado 4K", "Más nitidez y resolución para impresión y pantallas grandes."],
-    ["✍️", "Tarea propia", "Descríbelo con tus palabras: «quita el coche», «paredes grises»."],
+    ["¿Cómo funciona la suscripción?", "Se renueva cada semana. Puedes cancelarla en tu cuenta cuando quieras y mantienes el acceso hasta el final de la semana pagada."],
+    ["¿Y si se acaba el límite?", "El límite se renueva al inicio de cada periodo pagado. Si un procesamiento falla, la foto no cuenta."],
+    ["¿Puedo publicar en Idealista y Fotocasa?", "Sí. Las fotos modificadas llevan la marca «Amueblado virtual», como exigen los portales."],
+    ["¿Cambia la distribución?", "No. Paredes, ventanas y encuadre se mantienen: solo cambia lo que eliges."],
   ],
 });
 Object.assign(PAGE_I18N.en, {
-  navFeatures: "Features", navPricing: "Pricing", navFaq: "FAQ",
-  heroEyebrow: "For real estate agents",
-  heroTitle: "Listing photos that <em>sell</em> — in 30 seconds",
-  heroSub: "Virtual staging, HDR, sky replacement and twilight shots for your listings. Upload a phone photo, get a professional-grade image.",
-  ctaFree: (n) => `Start free — ${n} photos on us`, seePrices: "See pricing",
-  noteSec: "Results in 30 seconds", noteLang: "EN · ES · RU",
+  heroTitle: "Listing photos that sell", heroSub: "Staging, HDR, new skies and twilight light — in 30 seconds, from your phone.",
+  ctaFree: (n) => `Try it — ${n} free photos`, heroNote: (p) => `Then ${p} per week · cancel anytime`,
   before: "Before", after: "After",
-  stat1b: "20× cheaper", stat1: "than a retoucher or designer (€20–30 per photo)",
-  stat2b: "30 seconds", stat2: "instead of waiting 1–2 days",
-  stat3b: "10 tools", stat3: "for interiors and exteriors in one place",
-  featEyebrow: "Features", featTitle: "Everything a standout listing needs",
-  featLead: "One click and an empty or tired apartment looks like one buyers want to visit.",
-  howEyebrow: "How it works", howTitle: "Three steps to listing-ready photos",
-  how1t: "Upload photos", how1: "The whole property at once — from phone or camera, JPG or PNG.",
-  how2t: "Pick a task", how2: "Staging, HDR, sky, declutter — or describe it in your own words.",
-  how3t: "Download", how3: "Compare before/after, download in high resolution and publish.",
-  priceTitle: "Pay per photo, not per month",
-  cmp1: "Retoucher: <b>€20–30</b> per photo", cmp2: "Physical staging: <b>€1,500+</b>", cmp3: "Here: <b>from €0.40</b> per photo",
-  refTitle: "Invite colleagues, earn photos",
-  refText: (b, w) => `Share your link: your colleague gets +${w} bonus photos, and you get +${b} photos after their first purchase.`,
-  faqTitle: "Frequently asked questions",
+  toolsTitle: "Everything in one place", toolsLead: "Upload a photo, pick what to do, download the result.",
+  tools: ["Auto enhance", "Virtual staging", "Declutter", "Empty room", "New sky", "Twilight", "Lawn & yard", "Fresh paint", "4K upscale", "Custom task"],
+  priceTitle: "One plan", priceLead: "No packs, no complicated pricing. Use it every week, cancel when you don't need it.",
+  faqTitle: "Questions",
   faq: [
-    ["Do I need a subscription?", "No. You buy a photo pack and credits never expire. Use them whenever you need."],
-    ["What if processing fails?", "If there's a technical error, the credit is refunded automatically. Don't like the result? Click “Another take”."],
-    ["Can I publish on listing portals?", "Yes. For virtual staging and sky replacement we add a “Virtually staged” label by default, as many portals require."],
-    ["Do I get an invoice?", "Yes, an invoice is emailed after payment."],
-    ["Does it change the layout or windows?", "No. The AI keeps walls, windows, doors and the camera angle — only what you ask for changes."],
-    ["Who owns the photos?", "You do. Use them in listings, social media and ads without limits."],
-  ],
-  finalTitle: "Try it on your next listing", finalSub: "Sign up in 20 seconds, no card. Your first photos are free.",
-  footer: "AI photo enhancement for real estate.",
-  feats: [
-    ["✨", "Auto enhance", "Light, HDR without blown-out windows, white balance, straight verticals."],
-    ["🛋️", "Virtual staging", "Furnishes an empty room: 7 styles, from Scandinavian to luxury."],
-    ["🧹", "Declutter", "Removes personal items, cables and mess — ready for viewings."],
-    ["⬜", "Empty room", "Removes all furniture so buyers can imagine their own."],
-    ["☀️", "Sky replacement", "Grey sky → blue sky, sunlight on the façade."],
-    ["🌆", "Twilight shot", "A daytime façade becomes a striking dusk photo with glowing windows."],
-    ["🌿", "Landscaping", "Green lawn and tidy yard, no trash bins."],
-    ["🎨", "Refresh interior", "Freshly painted walls, clean floors and surfaces."],
-    ["🔍", "4K upscale", "Sharper, higher-resolution images for print and big screens."],
-    ["✍️", "Custom task", "Describe it your way: “remove the car”, “make the walls grey”."],
+    ["How does the subscription work?", "It renews every week. Cancel anytime in your account — you keep access until the end of the paid week."],
+    ["What if I hit the limit?", "The limit resets at the start of each paid period. Failed edits don't count."],
+    ["Can I publish on listing portals?", "Yes. Edited photos get a “Virtually staged” label, as portals require."],
+    ["Does it change the layout?", "No. Walls, windows and framing stay the same — only what you choose changes."],
   ],
 });
 
-$("#brand").innerHTML = BRAND_SVG + "Realty Photo AI";
+$("#brand").innerHTML = BRAND_SVG + "<span class=\"bt\">Realty Photo AI</span>";
 $("#langSlot").outerHTML = langSwitcherHTML();
-$("#year").textContent = "© " + new Date().getFullYear();
 
-// демо до/после
+// до/после
 const range = $("#demoRange");
 const applyDemo = () => {
-  const v = range.value;
-  $("#demo .before").style.clipPath = `inset(0 ${100 - v}% 0 0)`;
-  $("#demo .bar").style.left = v + "%";
+  $("#demo .before").style.clipPath = `inset(0 ${100 - range.value}% 0 0)`;
+  $("#demo .bar").style.left = range.value + "%";
 };
 range.oninput = applyDemo; applyDemo();
-// реальные демо из админки
+
+// реальные пары из админки
 const PRESET_ORDER = ["enhance", "staging", "declutter", "empty", "sky", "twilight", "lawn", "refresh", "upscale", "custom"];
 let DEMOS = [], demoIdx = 0, demoTimer = null;
-const demoName = (preset) => (t("feats")[PRESET_ORDER.indexOf(preset)] || [, preset])[1];
+const demoName = (p) => t("tools")[PRESET_ORDER.indexOf(p)] || p;
 function showDemo(i) {
   demoIdx = i;
-  const d = DEMOS[i];
-  const box = $("#demo");
+  const d = DEMOS[i], box = $("#demo");
   box.querySelectorAll("svg, img").forEach((n) => n.remove());
   const a = new Image(), b = new Image();
-  a.className = "after"; b.className = "before";
-  a.alt = demoName(d.preset); b.alt = "";
+  a.className = "after"; b.className = "before"; a.alt = demoName(d.preset); b.alt = "";
   a.src = `/demo-img/${d.id}/after?v=${d.v}`; b.src = `/demo-img/${d.id}/before?v=${d.v}`;
   box.prepend(b); box.prepend(a);
   range.value = 50; applyDemo();
@@ -386,50 +185,44 @@ function renderDemoTabs() {
   if (!DEMOS.length) return;
   $("#demoTabs").hidden = DEMOS.length < 2;
   $("#demoTabs").innerHTML = DEMOS.map((d, k) => `<button class="${k === demoIdx ? "on" : ""}">${escapeHtml(demoName(d.preset))}</button>`).join("");
-  $$("#demoTabs button").forEach((x, k) => (x.onclick = () => { stopDemoAuto(); showDemo(k); }));
+  $$("#demoTabs button").forEach((x, k) => (x.onclick = () => { clearInterval(demoTimer); showDemo(k); }));
 }
-const stopDemoAuto = () => { clearInterval(demoTimer); demoTimer = null; };
-range.addEventListener("pointerdown", stopDemoAuto);
-range.addEventListener("input", stopDemoAuto);
+range.addEventListener("pointerdown", () => clearInterval(demoTimer));
 fetch("/api/demos").then((r) => r.json()).then(({ demos }) => {
   if (!demos?.length) return;
-  DEMOS = demos;
-  renderDemoTabs(); showDemo(0);
+  DEMOS = demos; renderDemoTabs(); showDemo(0);
   if (DEMOS.length > 1) demoTimer = setInterval(() => showDemo((demoIdx + 1) % DEMOS.length), 6000);
 }).catch(() => {});
 
 let loggedIn = false;
-const cta = () => (loggedIn ? (location.href = "/app") : openAuth("up"));
-["#ctaTop", "#ctaHero", "#ctaFinal", "#ctaRef"].forEach((s) => ($(s).onclick = cta));
+const start = () => (loggedIn ? (location.href = "/app") : openAuth("up"));
+$("#ctaHero").onclick = start;
 $("#loginBtn").onclick = () => (loggedIn ? (location.href = "/app") : openAuth("in"));
-$("#pricingBody").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-pack]");
-  if (!b) return;
-  if (b.dataset.pack === "free") return cta();
-  buyPack(b.dataset.pack);
-});
+// на главной кнопка тарифа ведёт в регистрацию (подписка оформляется в приложении)
+$("#planBox").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-subscribe]")) return;
+  e.stopPropagation();
+  loggedIn ? (location.href = "/app?subscribe") : openAuth("up", { onDone: () => (location.href = "/app?subscribe") });
+}, true);
 
 function render() {
   const c = CONFIG || {};
-  renderDemoTabs();
-  $("#ctaHero").textContent = loggedIn ? t("openApp") : t("ctaFree", c.freeCredits || 5);
-  $("#ctaFinal").textContent = $("#ctaHero").textContent;
-  $("#ctaTop").textContent = loggedIn ? t("openApp") : t("tryFree");
-  $("#loginBtn").hidden = loggedIn;
-  $("#featGrid").innerHTML = t("feats").map(([ic, h, p]) => `<div class="feat"><div class="ic">${ic}</div><h4>${h}</h4><p>${p}</p></div>`).join("");
+  $("#ctaHero").textContent = loggedIn ? t("openApp") : t("ctaFree", c.freeCredits ?? 3);
+  $("#heroNote").textContent = t("heroNote", planPrice());
+  $("#loginBtn").textContent = loggedIn ? t("openApp") : t("login");
+  $("#tools").innerHTML = t("tools").map((x) => `<span>${x}</span>`).join("");
+  $("#planBox").innerHTML = planHTML();
   $("#faqList").innerHTML = t("faq").map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join("");
-  $("#refText").textContent = t("refText", c.refBonus ?? 10, c.refWelcome ?? 3);
-  $("#pricingBody").innerHTML = packsHTML({ withFree: true });
-  $("#footBrand").textContent = c.legal?.name ? `${c.legal.name}` : c.brand || "Realty Photo AI";
+  $("#foot").innerHTML = `© ${new Date().getFullYear()} ${escapeHtml(c.legal?.name || c.brand || "Realty Photo AI")}${c.supportEmail ? ` · <a href="mailto:${escapeHtml(c.supportEmail)}">${escapeHtml(c.supportEmail)}</a>` : ""}`;
   $("#legalLinks").innerHTML = legalLinksHTML();
-  $("#support").innerHTML = c.supportEmail ? `· <a href="mailto:${escapeHtml(c.supportEmail)}">${escapeHtml(c.supportEmail)}</a>` : "";
+  renderDemoTabs();
 }
 onLang(render);
 applyLang();
 loadConfig().then(async () => {
   try { const me = await api("/api/me"); window.ME = me.user; loggedIn = true; } catch {}
   applyLang();
-  if (new URLSearchParams(location.search).get("signup") !== null && !loggedIn) openAuth("up");
+  if (new URLSearchParams(location.search).has("signup") && !loggedIn) openAuth("up");
 });
 </script>
 </body>

@@ -38,6 +38,12 @@ const I18N = {
     consentCheck: 'Прошу начать оказание услуги сразу после оплаты и принимаю <a href="/condiciones" target="_blank">Условия</a>. Понимаю, что при отказе в течение 14 дней мне вернут деньги только за неиспользованные кредиты.',
     toPay: "Перейти к оплате", legalNotice: "Юр. информация", privacy: "Конфиденциальность", termsShort: "Условия", cookies: "Cookies",
     e_payment_provider: "Платёжная система не ответила, попробуйте ещё раз", paidPending: "Оплата обрабатывается банком — кредиты придут автоматически",
+    perWeek: "/ неделя", planLimit: (n) => `${n} фото каждую неделю`, planAll: "Все инструменты: меблировка, HDR, небо, вечер…",
+    planCancel: "Отмена в любой момент", planInvoice: "Счёт (factura) на email", planCta: "Оформить подписку",
+    planTrial: (n) => `Сначала ${n} фото бесплатно — без карты`, paywallTitle: "Подписка", paywallSub: "Один тариф. Всё включено.",
+    subConsent: 'Прошу начать услугу сразу после оплаты и принимаю <a href="/condiciones" target="_blank">Условия</a>. Подписка продлевается каждую неделю, пока я её не отменю. При отказе в течение 14 дней возвращается стоимость неиспользованной части.',
+    e_subscription_required: "Нужна подписка", e_limit_reached: "Лимит фото на эту неделю исчерпан", e_already_subscribed: "Подписка уже активна",
+    e_no_web_subscription: "Подписка оформлена не на сайте",
     e_network: "Нет связи с сервером", e_default: "Что-то пошло не так",
   },
   es: {
@@ -67,6 +73,12 @@ const I18N = {
     consentCheck: 'Solicito que el servicio comience inmediatamente tras el pago y acepto las <a href="/condiciones" target="_blank">Condiciones</a>. Entiendo que, si desisto en 14 días, solo se me reembolsarán los créditos no utilizados.',
     toPay: "Continuar al pago", legalNotice: "Aviso legal", privacy: "Privacidad", termsShort: "Condiciones", cookies: "Cookies",
     e_payment_provider: "La pasarela de pago no respondió, inténtalo de nuevo", paidPending: "El banco está procesando el pago — los créditos llegarán automáticamente",
+    perWeek: "/ semana", planLimit: (n) => `${n} fotos cada semana`, planAll: "Todas las herramientas: amueblar, HDR, cielo, atardecer…",
+    planCancel: "Cancela cuando quieras", planInvoice: "Factura por email", planCta: "Suscribirme",
+    planTrial: (n) => `Primero ${n} fotos gratis, sin tarjeta`, paywallTitle: "Suscripción", paywallSub: "Un solo plan. Todo incluido.",
+    subConsent: 'Solicito que el servicio comience inmediatamente tras el pago y acepto las <a href="/condiciones" target="_blank">Condiciones</a>. La suscripción se renueva cada semana hasta que la cancele. Si desisto en 14 días, se reembolsa la parte no utilizada.',
+    e_subscription_required: "Necesitas una suscripción", e_limit_reached: "Has usado todas las fotos de esta semana", e_already_subscribed: "Tu suscripción ya está activa",
+    e_no_web_subscription: "La suscripción no se contrató en la web",
     e_network: "Sin conexión con el servidor", e_default: "Algo ha fallado",
   },
   en: {
@@ -96,6 +108,12 @@ const I18N = {
     consentCheck: 'I request that the service start immediately after payment and accept the <a href="/condiciones" target="_blank">Terms</a>. I understand that if I withdraw within 14 days, only unused credits will be refunded.',
     toPay: "Continue to payment", legalNotice: "Legal notice", privacy: "Privacy", termsShort: "Terms", cookies: "Cookies",
     e_payment_provider: "The payment provider didn't respond, please try again", paidPending: "Your bank is processing the payment — credits will arrive automatically",
+    perWeek: "/ week", planLimit: (n) => `${n} photos every week`, planAll: "All tools: staging, HDR, sky, twilight…",
+    planCancel: "Cancel anytime", planInvoice: "Invoice by email", planCta: "Subscribe",
+    planTrial: (n) => `Start with ${n} free photos — no card`, paywallTitle: "Subscription", paywallSub: "One plan. Everything included.",
+    subConsent: 'I request that the service start immediately after payment and accept the <a href="/condiciones" target="_blank">Terms</a>. The subscription renews every week until I cancel it. If I withdraw within 14 days, the unused part is refunded.',
+    e_subscription_required: "A subscription is required", e_limit_reached: "You've used all photos for this week", e_already_subscribed: "Your subscription is already active",
+    e_no_web_subscription: "This subscription wasn't purchased on the web",
     e_network: "Can't reach the server", e_default: "Something went wrong",
   },
 };
@@ -164,12 +182,12 @@ async function api(path, body, method) {
 
 let CONFIG = null;
 async function loadConfig() {
-  if (!CONFIG) CONFIG = await api("/api/config").catch(() => ({ packs: [], currency: "eur", freeCredits: 5, refWelcome: 0 }));
+  if (!CONFIG) CONFIG = await api("/api/config").catch(() => ({ plan: { price: 999, currency: "usd", weeklyLimit: 15 }, currency: "usd", freeCredits: 3, refWelcome: 0 }));
   return CONFIG;
 }
 const money = (cents, cur) =>
-  new Intl.NumberFormat(lang === "en" ? "en-IE" : lang === "es" ? "es-ES" : "ru-RU", {
-    style: "currency", currency: (cur || CONFIG?.currency || "eur").toUpperCase(),
+  new Intl.NumberFormat(lang === "en" ? "en-US" : lang === "es" ? "es-ES" : "ru-RU", {
+    style: "currency", currencyDisplay: "narrowSymbol", currency: (cur || CONFIG?.currency || "usd").toUpperCase(),
     minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2,
   }).format(cents / 100);
 
@@ -277,100 +295,61 @@ async function openAuth(mode = "up", { locked = false, onDone = null } = {}) {
   setTimeout(() => $("#authEmail").focus(), 50);
 }
 
-// ---------------- Тарифы ----------------
-function packsHTML({ withFree = false, buyLabel } = {}) {
-  const c = CONFIG || { packs: [] };
-  const free = withFree && c.freeCredits
-    ? `<div class="pack free"><div class="name">${t("freeName")}</div><div class="credits">${t("freeCredits", c.freeCredits)}</div>
-        <div class="price">${money(0)}</div><div class="per">${t("f_nocard")}</div>
-        <ul><li>${t("f_all")}</li><li>${t("f_try")}</li></ul>
-        <button class="btn ghost full" data-pack="free">${t("freeCta")}</button></div>` : "";
-  return `<div class="packs">${free}${c.packs.map((p) => `
-    <div class="pack ${p.popular ? "popular" : ""}">
-      ${p.popular ? `<span class="badge">${t("popular")}</span>` : ""}
-      <div class="name">${escapeHtml(t("pack_" + p.id) !== "pack_" + p.id ? t("pack_" + p.id) : p.name || p.id)}</div>
-      <div class="credits">${t("photos", p.credits)}</div>
-      <div class="price">${money(p.price)}</div>
-      <div class="per">${t("perPhoto", money(Math.round(p.price / p.credits)))}</div>
-      <ul><li>${t("f_all")}</li><li>${t("f_hd")}</li><li>${t("f_noexp")}</li><li>${t("f_invoice")}</li>${p.credits >= 150 ? `<li>${t("f_priority")}</li>` : ""}</ul>
-      <button class="btn ${p.popular ? "" : "ghost"} full" data-pack="${escapeHtml(p.id)}">${buyLabel || t("buy")}</button>
-    </div>`).join("")}</div>`;
+// ---------------- Тариф: недельная подписка ----------------
+const planPrice = () => money(CONFIG?.plan?.price ?? 999, CONFIG?.plan?.currency);
+function planHTML({ cta = true } = {}) {
+  const c = CONFIG || {}, n = c.plan?.weeklyLimit ?? 15;
+  return `<div class="plan">
+    <div class="price">${planPrice()} <small>${t("perWeek")}</small></div>
+    <ul><li>${t("planLimit", n)}</li><li>${t("planAll")}</li><li>${t("planCancel")}</li><li>${t("planInvoice")}</li></ul>
+    ${cta ? `<button class="btn full lg" data-subscribe>${t("planCta")}</button>` : ""}
+    ${c.freeCredits ? `<p class="fine">${t("planTrial", c.freeCredits)}</p>` : ""}
+  </div>`;
 }
 
-async function buyPack(packId) {
-  if (!window.ME) return openAuth("up", { onDone: () => buyPack(packId) });
-  if (!CONFIG.payments) return toast(t("payOff") + (CONFIG.supportEmail ? " " + CONFIG.supportEmail : ""), 6000);
-  const pack = CONFIG.packs.find((p) => p.id === packId);
-  if (!pack) return;
-  // Явное согласие на немедленное начало услуги — отдельной галочкой (ст. 98.8, 103, 108.3 TRLGDCU)
-  let el = $("#consentDlg");
+// Окно подписки: тариф + отдельное согласие (ст. 98.8, 108.3 TRLGDCU) → Stripe Checkout
+function openPaywall() {
+  if (!window.ME) return openAuth("up", { onDone: () => openPaywall() });
+  let el = $("#paywall");
   if (!el) {
     el = document.createElement("div");
-    el.className = "dlg-bg"; el.id = "consentDlg";
+    el.className = "dlg-bg"; el.id = "paywall";
     el.innerHTML = `<div class="dlg"><button class="x" aria-label="close">×</button>
-      <h3 id="cTitle"></h3><p class="sub" id="cText"></p>
-      <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;margin:6px 0 4px">
-        <input type="checkbox" id="cCheck" style="margin-top:3px;accent-color:var(--accent)" /><span id="cCheckTxt"></span></label>
-      <div class="form-err" id="cErr"></div>
-      <button class="btn full lg" id="cGo"></button></div>`;
+      <h3 id="pwTitle"></h3><p class="sub" id="pwSub"></p><div id="pwPlan"></div>
+      <label class="check" style="margin-top:16px"><input type="checkbox" id="pwConsent" /><span id="pwConsentTxt"></span></label>
+      <div class="form-err" id="pwErr"></div>
+      <button class="btn full lg" id="pwGo"></button></div>`;
     document.body.appendChild(el);
     el.querySelector(".x").onclick = () => el.classList.remove("show");
     el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("show"); });
   }
-  $("#cTitle").textContent = t("consentTitle");
-  $("#cText").textContent = t("consentText", money(pack.price), pack.credits);
-  $("#cCheckTxt").innerHTML = t("consentCheck");
-  $("#cGo").textContent = t("toPay");
-  $("#cErr").textContent = "";
-  $("#cCheck").checked = false;
-  $("#cGo").onclick = async () => {
-    if (!$("#cCheck").checked) return ($("#cErr").textContent = errText("consent_required"));
-    $("#cGo").disabled = true;
+  $("#pwTitle").textContent = t("paywallTitle");
+  $("#pwSub").textContent = t("paywallSub");
+  $("#pwPlan").innerHTML = planHTML({ cta: false });
+  $("#pwConsentTxt").innerHTML = t("subConsent");
+  $("#pwConsent").checked = false;
+  $("#pwErr").textContent = "";
+  $("#pwGo").textContent = t("planCta");
+  $("#pwGo").disabled = false;
+  $("#pwGo").onclick = async () => {
+    if (!CONFIG.payments) return ($("#pwErr").textContent = t("payOff") + (CONFIG.supportEmail ? " " + CONFIG.supportEmail : ""));
+    if (!$("#pwConsent").checked) return ($("#pwErr").textContent = errText("consent_required"));
+    $("#pwGo").disabled = true;
     try {
-      const r = await api("/api/checkout", { pack: packId, consent: true });
+      const r = await api("/api/checkout", { consent: true });
       location.href = r.url;
     } catch (e) {
-      $("#cErr").textContent = errText(e.code);
-      $("#cGo").disabled = false;
+      $("#pwErr").textContent = errText(e.code);
+      $("#pwGo").disabled = false;
     }
   };
-  $("#priceDlg")?.classList.remove("show");
   el.classList.add("show");
 }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-subscribe]")) openPaywall(); });
 
 function legalLinksHTML() {
   return [["aviso-legal", "legalNotice"], ["privacidad", "privacy"], ["condiciones", "termsShort"], ["cookies", "cookies"]]
     .map(([href, k]) => `<a href="/${href}">${t(k)}</a>`).join(" · ");
-}
-
-function ensurePricingDialog() {
-  if ($("#priceDlg")) return;
-  const el = document.createElement("div");
-  el.className = "dlg-bg"; el.id = "priceDlg";
-  el.innerHTML = `<div class="dlg wide"><button class="x" aria-label="close">×</button>
-    <h3 id="priceTitle"></h3><p class="sub" id="priceSub"></p><div id="priceBody"></div>
-    <p class="fine" id="priceNote"></p></div>`;
-  document.body.appendChild(el);
-  el.querySelector(".x").onclick = () => el.classList.remove("show");
-  el.addEventListener("click", (e) => {
-    if (e.target === el) el.classList.remove("show");
-    const b = e.target.closest("[data-pack]");
-    if (b) buyPack(b.dataset.pack);
-  });
-  const render = () => {
-    $("#priceTitle").textContent = t("pricingTitle");
-    $("#priceSub").textContent = t("pricingSub");
-    $("#priceBody").innerHTML = packsHTML();
-    $("#priceNote").textContent = t("costNote");
-  };
-  onLang(render);
-  el._render = render;
-}
-async function openPricing() {
-  await loadConfig();
-  ensurePricingDialog();
-  $("#priceDlg")._render();
-  $("#priceDlg").classList.add("show");
 }
 
 const BRAND_SVG = `<svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#1f5d4c"/><path d="M7 16.5 16 9l9 7.5V24a1 1 0 0 1-1 1h-5v-5h-6v5H8a1 1 0 0 1-1-1v-7.5Z" fill="#fff"/><circle cx="23.5" cy="8.5" r="2.5" fill="#f2c14e"/></svg>`;

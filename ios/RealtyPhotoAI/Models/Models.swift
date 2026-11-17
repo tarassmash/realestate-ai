@@ -16,18 +16,53 @@ struct Referrals: Decodable, Equatable {
     let paid: Int
 }
 
+// MARK: - Подписка и доступ
+
+struct Subscription: Decodable, Equatable {
+    let active: Bool
+    let provider: String?   // "apple" | "stripe"
+    let expiresAt: Date?
+    let cancelAtPeriodEnd: Bool
+}
+
+struct Usage: Decodable, Equatable {
+    let used: Int
+    let limit: Int
+    let remaining: Int
+}
+
+/// Что доступно пользователю: подписка (лимит недели) и бесплатные пробные фото
+struct Entitlement: Decodable, Equatable {
+    let subscription: Subscription
+    let usage: Usage
+    let credits: Int
+    let canProcess: Bool
+}
+
 struct MeResponse: Decodable {
     let user: User
     let referrals: Referrals?
+    let subscription: Subscription
+    let usage: Usage
+    let credits: Int
+    let canProcess: Bool
+    var entitlement: Entitlement { Entitlement(subscription: subscription, usage: usage, credits: credits, canProcess: canProcess) }
 }
 
 struct AuthResponse: Decodable {
     let user: User
 }
 
+struct Plan: Decodable {
+    let price: Int
+    let currency: String
+    let weeklyLimit: Int
+}
+
 struct PublicConfig: Decodable {
     let brand: String?
     let currency: String
+    let plan: Plan?
     let freeCredits: Int
     let refBonus: Int?
     let refWelcome: Int?
@@ -52,8 +87,24 @@ struct Job: Decodable, Identifiable, Hashable {
 }
 
 struct JobsResponse: Decodable { let jobs: [Job] }
-struct JobStatusResponse: Decodable { let job: Job; let credits: Int }
-struct CreateJobResponse: Decodable { let id: String; let credits: Int; let cost: Int }
+struct JobStatusResponse: Decodable {
+    let job: Job
+    let subscription: Subscription
+    let usage: Usage
+    let credits: Int
+    let canProcess: Bool
+    var entitlement: Entitlement { Entitlement(subscription: subscription, usage: usage, credits: credits, canProcess: canProcess) }
+}
+
+struct CreateJobResponse: Decodable {
+    let id: String
+    let cost: Int
+    let subscription: Subscription
+    let usage: Usage
+    let credits: Int
+    let canProcess: Bool
+    var entitlement: Entitlement { Entitlement(subscription: subscription, usage: usage, credits: credits, canProcess: canProcess) }
+}
 
 struct Payment: Decodable, Identifiable {
     var id: String { "\(createdAt.timeIntervalSince1970)-\(amountCents)-\(pack)" }
@@ -70,15 +121,10 @@ struct Payment: Decodable, Identifiable {
 
 struct PaymentsResponse: Decodable { let payments: [Payment] }
 
-struct IAPProduct: Decodable, Equatable {
-    let productId: String
-    let packId: String
-    let credits: Int
-    let popular: Bool
+struct IAPProductsResponse: Decodable {
+    let subscription: String   // ID подписки в App Store Connect, например com.realtyphotoai.app.weekly
+    let weeklyLimit: Int
 }
-
-struct IAPProductsResponse: Decodable { let products: [IAPProduct] }
-struct IAPResult: Decodable { let credited: Bool; let credits: Int }
 struct OKResponse: Decodable {}
 
 // MARK: - Тела запросов
@@ -94,9 +140,6 @@ struct AuthBody: Encodable {
 struct JobBody: Encodable {
     let preset: String
     let prompt: String
-    let model: String
-    let resolution: String
-    let upscale: Bool
     let image: String
     let thumb: String
     let name: String

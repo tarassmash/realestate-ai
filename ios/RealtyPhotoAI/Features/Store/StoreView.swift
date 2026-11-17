@@ -1,7 +1,9 @@
 import SwiftUI
 import StoreKit
 
-struct StoreView: View {
+/// Экран подписки. Содержит всё, что требует Apple (3.1.2): название, срок, цену за период,
+/// условия автопродления, ссылки на Условия и Политику конфиденциальности, «Восстановить покупки».
+struct SubscriptionView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var store: PurchaseManager
     @Environment(\.dismiss) private var dismiss
@@ -9,52 +11,75 @@ struct StoreView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        CreditsBadge(credits: app.credits)
-                        Spacer()
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("sub.title").font(.largeTitle.bold())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let product = store.product {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(product.displayPrice).font(.system(size: 44, weight: .bold))
+                                Text("sub.perWeek").foregroundStyle(.secondary)
+                            }
+                        } else if store.isLoading {
+                            ProgressView()
+                        }
+                        Text("sub.autoRenews").font(.footnote).foregroundStyle(.secondary)
                     }
-                    Text("store.subtitle")
-                        .font(.subheadline)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        bullet(String(format: String(localized: "sub.limit %lld"), app.weeklyLimit))
+                        bullet(String(localized: "sub.allTools"))
+                        bullet(String(localized: "sub.cancelAnytime"))
+                    }
+
+                    Button {
+                        Task { await store.subscribe() }
+                    } label: {
+                        HStack {
+                            if store.isPurchasing { ProgressView().tint(.white) }
+                            Text("sub.subscribe").bold()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.primary)
+                    .foregroundStyle(Color(uiColor: .systemBackground))
+                    .controlSize(.large)
+                    .disabled(store.product == nil || store.isPurchasing)
+
+                    Button {
+                        Task { await store.restore() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if store.isRestoring { ProgressView() }
+                            Text("sub.restore")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .font(.subheadline)
+                    .disabled(store.isRestoring)
+
+                    // Обязательный текст об автопродлении (App Store 3.1.2)
+                    Text("sub.legal")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if store.isLoading && store.products.isEmpty {
-                        ProgressView().frame(maxWidth: .infinity).padding(40)
-                    }
-
-                    ForEach(store.products, id: \.id) { product in
-                        PackCard(
-                            product: product,
-                            credits: store.credits(for: product),
-                            popular: store.isPopular(product),
-                            busy: store.purchasingId == product.id
-                        ) {
-                            Task { await store.buy(product) }
-                        }
-                        .disabled(store.purchasingId != nil)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("store.note.noexpire", systemImage: "checkmark.circle")
-                        Label("store.note.cost", systemImage: "info.circle")
-                        Label("store.note.apple", systemImage: "apple.logo")
+                    HStack(spacing: 16) {
+                        Link("legal.termsOfUse", destination: AppConfig.termsURL)
+                        Link("legal.privacy", destination: AppConfig.privacyURL)
                     }
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                    LegalLinksRow()
                 }
-                .padding()
+                .padding(24)
             }
-            .background(Color.appBackground)
-            .navigationTitle(Text("store.title"))
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("common.close") { dismiss() }
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(Text("common.close"))
                 }
             }
-            .task { await store.loadProducts() }
+            .task { await store.loadProduct() }
             .alert(
                 Text("common.error"),
                 isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })
@@ -63,59 +88,16 @@ struct StoreView: View {
             } message: {
                 Text(store.errorMessage ?? "")
             }
-            .onChange(of: app.credits) { old, new in
-                if new > old { dismiss() } // кредиты начислены — закрываем
+            .onChange(of: app.isSubscribed) { _, subscribed in
+                if subscribed { dismiss() }
             }
         }
     }
-}
 
-private struct PackCard: View {
-    let product: Product
-    let credits: Int
-    let popular: Bool
-    let busy: Bool
-    let action: () -> Void
-
-    private var perPhoto: String {
-        guard credits > 0 else { return "" }
-        let value = product.price / Decimal(credits)
-        return value.formatted(product.priceFormatStyle)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(String(format: String(localized: "store.photos %lld"), credits))
-                    .font(.title2.bold())
-                Spacer()
-                if popular {
-                    Text("store.popular")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.brand, in: Capsule())
-                        .foregroundStyle(.white)
-                }
-            }
-            Text(String(format: String(localized: "store.perPhoto %@"), perPhoto))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Button(action: action) {
-                HStack {
-                    if busy { ProgressView().tint(.white) }
-                    Text(product.displayPrice).bold()
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "checkmark").font(.footnote.bold())
+            Text(text)
         }
-        .padding()
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(popular ? Color.brand : Color.line, lineWidth: popular ? 2 : 1)
-        )
     }
 }

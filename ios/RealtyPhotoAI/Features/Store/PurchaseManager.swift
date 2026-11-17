@@ -1,14 +1,14 @@
 import Foundation
 import StoreKit
 
-/// Покупка пакетов фото через App Store (StoreKit 2).
-/// Сервер проверяет подпись Apple (JWS) и начисляет кредиты; транзакция завершается только после начисления.
+/// Недельная подписка через App Store (StoreKit 2, auto-renewable).
+/// Сервер проверяет подпись Apple (JWS) и открывает доступ; транзакция завершается только после этого.
 @MainActor
 final class PurchaseManager: ObservableObject {
-    @Published private(set) var products: [Product] = []
-    @Published private(set) var catalog: [String: IAPProduct] = [:]
+    @Published private(set) var product: Product?
     @Published private(set) var isLoading = false
-    @Published private(set) var purchasingId: String?
+    @Published private(set) var isPurchasing = false
+    @Published private(set) var isRestoring = false
     @Published var errorMessage: String?
 
     private weak var app: AppModel?
@@ -17,7 +17,7 @@ final class PurchaseManager: ObservableObject {
     func start(app: AppModel) {
         self.app = app
         guard updatesTask == nil else { return }
-        // покупки, завершённые вне приложения (Ask to Buy, SCA-подтверждение банка, другое устройство)
+        // продления, Ask to Buy, подтверждение банка, покупка на другом устройстве
         updatesTask = Task { [weak self] in
             for await update in Transaction.updates {
                 await self?.handle(update)
@@ -26,39 +26,36 @@ final class PurchaseManager: ObservableObject {
         Task { await processUnfinished() }
     }
 
-    func loadProducts() async {
+    func loadProduct() async {
+        guard product == nil else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             let response: IAPProductsResponse = try await APIClient.shared.request("/api/iap/products")
-            catalog = Dictionary(uniqueKeysWithValues: response.products.map { ($0.productId, $0) })
-            let loaded = try await Product.products(for: response.products.map(\.productId))
-            products = loaded.sorted { (catalog[$0.id]?.credits ?? 0) < (catalog[$1.id]?.credits ?? 0) }
-            if products.isEmpty { errorMessage = String(localized: "store.unavailable") }
+            product = try await Product.products(for: [response.subscription]).first
+            if product == nil { errorMessage = String(localized: "sub.unavailable") }
         } catch let error as APIError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = String(localized: "store.unavailable")
+            errorMessage = String(localized: "sub.unavailable")
         }
     }
 
-    func credits(for product: Product) -> Int { catalog[product.id]?.credits ?? 0 }
-    func isPopular(_ product: Product) -> Bool { catalog[product.id]?.popular ?? false }
-
-    func buy(_ product: Product) async {
+    func subscribe() async {
+        guard let product else { return }
         guard let raw = app?.user?.appAccountToken, let token = UUID(uuidString: raw) else {
             errorMessage = APIError.message(for: "auth_required")
             return
         }
-        purchasingId = product.id
-        defer { purchasingId = nil }
+        isPurchasing = true
+        defer { isPurchasing = false }
         do {
             let result = try await product.purchase(options: [.appAccountToken(token)])
             switch result {
             case .success(let verification):
                 await handle(verification)
             case .pending:
-                app?.show(String(localized: "store.pending"))
+                app?.show(String(localized: "sub.pending"))
             case .userCancelled:
                 break
             @unknown default:
@@ -69,6 +66,19 @@ final class PurchaseManager: ObservableObject {
         }
     }
 
+    /// «Восстановить покупки» — обязательная кнопка для подписок
+    func restore() async {
+        isRestoring = true
+        defer { isRestoring = false }
+        do { try await AppStore.sync() } catch { /* пользователь мог отменить вход в Apple ID */ }
+        var found = false
+        for await result in Transaction.currentEntitlements {
+            found = true
+            await handle(result)
+        }
+        app?.show(found ? String(localized: "sub.restored") : String(localized: "sub.nothingToRestore"))
+    }
+
     func processUnfinished() async {
         for await result in Transaction.unfinished {
             await handle(result)
@@ -76,29 +86,29 @@ final class PurchaseManager: ObservableObject {
     }
 
     private func handle(_ verification: VerificationResult<Transaction>) async {
-        // неподтверждённые устройством транзакции не засчитываем
         guard case .verified(let transaction) = verification else { return }
-        guard transaction.productType == .consumable, transaction.revocationDate == nil else {
+        guard transaction.productType == .autoRenewable else {
             await transaction.finish()
             return
         }
         do {
-            let result: IAPResult = try await APIClient.shared.request(
+            let entitlement: Entitlement = try await APIClient.shared.request(
                 "/api/iap/apple", method: "POST",
                 body: IAPBody(signedTransaction: verification.jwsRepresentation)
             )
-            app?.setCredits(result.credits)
+            let wasSubscribed = app?.isSubscribed ?? false
+            app?.apply(entitlement)
             await transaction.finish()
-            if result.credited {
-                let credits = catalog[transaction.productID]?.credits ?? 0
-                app?.show(String(format: String(localized: "store.success %lld"), credits))
+            if entitlement.subscription.active && !wasSubscribed {
+                app?.show(String(localized: "sub.success"))
+                app?.showPaywall = false
             }
         } catch let error as APIError {
             switch error.code {
-            case "revoked", "unknown_product", "wrong_bundle":
-                await transaction.finish() // начислять нечего
+            case "unknown_product", "wrong_bundle":
+                await transaction.finish()
             default:
-                // нет сети / не вошли / покупка с другого аккаунта — оставляем, дозачислим позже
+                // нет сети / не вошли / подписка другого аккаунта — повторим позже
                 if error.status != 401 { errorMessage = error.errorDescription }
             }
         } catch {

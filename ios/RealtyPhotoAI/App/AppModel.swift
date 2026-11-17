@@ -7,12 +7,17 @@ final class AppModel: ObservableObject {
     @Published var user: User?
     @Published var config: PublicConfig?
     @Published var referrals: Referrals?
+    @Published var entitlement: Entitlement?
     @Published var isBootstrapping = true
     @Published var toast: String?
+    @Published var showPaywall = false
 
     private let api = APIClient.shared
 
-    var credits: Int { user?.credits ?? 0 }
+    var credits: Int { entitlement?.credits ?? user?.credits ?? 0 }
+    var isSubscribed: Bool { entitlement?.subscription.active ?? false }
+    var canProcess: Bool { entitlement?.canProcess ?? false }
+    var weeklyLimit: Int { entitlement?.usage.limit ?? config?.plan?.weeklyLimit ?? 15 }
 
     func bootstrap() async {
         config = try? await api.request("/api/config")
@@ -25,6 +30,7 @@ final class AppModel: ObservableObject {
             let me: MeResponse = try await api.request("/api/me")
             user = me.user
             referrals = me.referrals
+            entitlement = me.entitlement
         } catch let error as APIError where error.status == 401 {
             user = nil
         } catch {
@@ -42,7 +48,7 @@ final class AppModel: ObservableObject {
         let body = AuthBody(email: email, password: password, lang: AppConfig.language, acceptTerms: acceptTerms, ref: ref)
         let _: AuthResponse = try await api.request("/api/auth/register", method: "POST", body: body)
         await refreshMe()
-        if let free = config?.freeCredits, free > 0 {
+        if credits > 0 {
             toast = String(format: String(localized: "auth.welcome %lld"), credits)
         }
     }
@@ -52,6 +58,7 @@ final class AppModel: ObservableObject {
         api.clearCookies()
         user = nil
         referrals = nil
+        entitlement = nil
     }
 
     func changePassword(current: String, next: String) async throws {
@@ -65,8 +72,9 @@ final class AppModel: ObservableObject {
         user = nil
     }
 
-    func setCredits(_ value: Int) {
-        user?.credits = value
+    func apply(_ value: Entitlement) {
+        entitlement = value
+        user?.credits = value.credits
     }
 
     func show(_ message: String) {

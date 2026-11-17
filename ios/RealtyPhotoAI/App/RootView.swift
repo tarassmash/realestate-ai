@@ -24,6 +24,7 @@ struct RootView: View {
             if email != nil { Task { await store.processUnfinished() } }
         }
         .toast(message: $app.toast)
+        .sheet(isPresented: $app.showPaywall) { SubscriptionView() }
     }
 }
 

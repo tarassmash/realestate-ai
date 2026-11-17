@@ -12,6 +12,7 @@ const auth = require("./lib/auth");
 const fal = require("./lib/fal");
 const stripe = require("./lib/stripe");
 const apple = require("./lib/apple");
+const billing = require("./lib/billing");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const MAX_BODY = 25 * 1024 * 1024;
@@ -102,7 +103,8 @@ async function runJob(job, payload) {
       console.error("job failed", job.id, e.message);
       await db.tx(async (c) => {
         await c.query("UPDATE jobs SET status='failed', error=$2, finished_at=now() WHERE id=$1", [job.id, e.message.slice(0, 400)]);
-        await db.addCredits(job.user_id, job.cost, "refund", job.id, c);
+        // фото по подписке при ошибке просто не засчитывается; бесплатный кредит возвращаем
+        if (job.billing === "credits") await db.addCredits(job.user_id, job.cost, "refund", job.id, c);
       });
     }
   });
@@ -112,8 +114,8 @@ async function runJob(job, payload) {
 const routes = {
   "GET /api/config": async () => ({
     brand: config.BRAND,
-    currency: config.CURRENCY,
-    packs: config.PACKS,
+    currency: config.SUB_CURRENCY,
+    plan: { price: config.SUB_PRICE, currency: config.SUB_CURRENCY, interval: "week", weeklyLimit: config.SUB_WEEKLY_LIMIT },
     freeCredits: config.FREE_CREDITS,
     refBonus: config.REF_BONUS,
     refWelcome: config.REF_WELCOME,
@@ -157,7 +159,7 @@ const routes = {
       "SELECT count(*)::int AS invited, count(*) FILTER (WHERE ref_rewarded)::int AS paid FROM users WHERE referred_by=$1",
       [u.id]
     );
-    return { user: publicUser(u), referrals: refs.rows[0] };
+    return { user: publicUser(u), referrals: refs.rows[0], ...(await billing.entitlement(u)) };
   },
 
   "GET /api/me/payments": async (req) => {
@@ -220,16 +222,19 @@ const routes = {
 
     const cost = config.costOf({ upscaleOnly, resolution: model.includes("pro") ? resolution : "1K" });
     const id = crypto.randomUUID();
-    const balance = await db.spendCredits(u.id, cost, "job", id);
-    if (balance === null) throw auth.httpErr(402, "no_credits");
-
-    const { rows } = await db.q(
-      `INSERT INTO jobs(id, user_id, name, preset, model, resolution, upscale, cost, thumb)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, user_id, cost`,
-      [id, u.id, String(b.name || "photo").slice(0, 120), preset, upscaleOnly ? null : model, resolution, !!b.upscale || upscaleOnly, cost, thumb]
-    );
-    runJob(rows[0], { image: b.image, prompt, model, resolution, upscale: !!b.upscale, upscaleOnly });
-    return { id, credits: balance, cost };
+    // подписка (лимит недели) или бесплатные кредиты — атомарно
+    const job = await db.tx(async (c) => {
+      const { billing: how } = await billing.reserve(c, u.id, cost);
+      const { rows } = await c.query(
+        `INSERT INTO jobs(id, user_id, name, preset, model, resolution, upscale, cost, thumb, billing)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, user_id, cost, billing`,
+        [id, u.id, String(b.name || "photo").slice(0, 120), preset, upscaleOnly ? null : model, resolution, !!b.upscale || upscaleOnly, cost, thumb, how]
+      );
+      return rows[0];
+    });
+    runJob(job, { image: b.image, prompt, model, resolution, upscale: !!b.upscale, upscaleOnly });
+    const fresh = (await db.q("SELECT * FROM users WHERE id=$1", [u.id])).rows[0];
+    return { id, cost, billing: job.billing, ...(await billing.entitlement(fresh)) };
   },
 
   "GET /api/jobs": async (req, res, { query }) => {
@@ -257,8 +262,8 @@ async function dynamicRoute(method, pathname, req, res, query) {
       [m[1], u.id]
     );
     if (!rows[0]) throw auth.httpErr(404, "not_found");
-    const me = await db.q("SELECT credits FROM users WHERE id=$1", [u.id]);
-    return send(res, 200, { job: rows[0], credits: me.rows[0].credits });
+    const fresh = (await db.q("SELECT * FROM users WHERE id=$1", [u.id])).rows[0];
+    return send(res, 200, { job: rows[0], ...(await billing.entitlement(fresh)) });
   }
   if (method === "GET" && (m = pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/thumb$/))) {
     const u = await requireUser(req);
@@ -402,18 +407,17 @@ async function demoRoute(method, pathname, req, res) {
   return false;
 }
 
-// ---------- оплата ----------
+// ---------- оплата: недельная подписка ----------
 async function handleCheckout(req, res) {
   const u = await requireUser(req);
   if (!config.STRIPE_SECRET_KEY) throw auth.httpErr(503, "payments_off");
-  const { pack: packId, consent } = await readJson(req, 1000);
+  const { consent } = await readJson(req, 1000);
   // Явное согласие на немедленное начало услуги (ст. 103 TRLGDCU) — без него не продаём
   if (consent !== true) throw auth.httpErr(400, "consent_required");
-  const pack = config.PACKS.find((p) => p.id === packId);
-  if (!pack) throw auth.httpErr(400, "bad_pack");
+  if (billing.subscriptionOf(u).active) throw auth.httpErr(409, "already_subscribed");
   let session;
   try {
-    session = await stripe.createCheckout({ user: u, pack, baseUrl: baseUrl(req) });
+    session = await stripe.createSubscriptionCheckout({ user: u, baseUrl: baseUrl(req) });
   } catch (e) {
     console.error("checkout:", e.message);
     throw auth.httpErr(502, "payment_provider");
@@ -421,70 +425,31 @@ async function handleCheckout(req, res) {
   send(res, 200, { url: session.url });
 }
 
-// Ссылки на чек и счёт из полной сессии (payment_intent.latest_charge и invoice раскрыты)
-function sessionLinks(s) {
-  const pi = s.payment_intent;
-  const charge = pi && typeof pi === "object" ? pi.latest_charge : null;
-  const inv = s.invoice && typeof s.invoice === "object" ? s.invoice : null;
-  return {
-    paymentIntent: typeof pi === "string" ? pi : pi?.id || null,
-    receiptUrl: charge && typeof charge === "object" ? charge.receipt_url : null,
-    invoiceUrl: inv?.hosted_invoice_url || null,
-    invoicePdf: inv?.invoice_pdf || null,
-  };
-}
-
 // Кредиты за покупку + реферальный бонус пригласившему (один раз, после первой оплаты друга)
-async function creditPurchase(c, userId, credits, ref) {
-  await db.addCredits(userId, credits, "purchase", ref, c);
-  const r = await c.query(
+async function rewardReferrer(userId) {
+  const r = await db.q(
     "UPDATE users SET ref_rewarded=TRUE WHERE id=$1 AND referred_by IS NOT NULL AND ref_rewarded=FALSE RETURNING referred_by",
     [userId]
   );
-  if (r.rows[0] && config.REF_BONUS > 0) await db.addCredits(r.rows[0].referred_by, config.REF_BONUS, "ref_bonus", String(userId), c);
+  if (r.rows[0] && config.REF_BONUS > 0) await db.tx((c) => db.addCredits(r.rows[0].referred_by, config.REF_BONUS, "ref_bonus", String(userId), c));
 }
 
-// Начисление кредитов за оплаченную сессию. Идемпотентно: повторный вызов ничего не начислит.
-async function fulfill(session) {
-  if (session.payment_status !== "paid") return false;
-  const userId = Number(session.metadata?.user_id || session.client_reference_id);
-  const credits = Number(session.metadata?.credits);
-  if (!userId || !credits) {
-    console.error("fulfill: нет user_id/credits", session.id);
-    return false;
-  }
-  // дотягиваем чек и счёт (не критично, если Stripe не ответит)
-  let links = sessionLinks(session);
-  if (!links.receiptUrl || !links.invoiceUrl) {
-    try { links = { ...links, ...Object.fromEntries(Object.entries(sessionLinks(await stripe.retrieveSession(session.id))).filter(([, v]) => v)) }; }
-    catch (e) { console.error("retrieveSession:", e.message); }
-  }
-  const credited = await db.tx(async (c) => {
-    const ins = await c.query(
-      `INSERT INTO payments(user_id, stripe_session, pack, credits, amount_cents, currency, consent_at, terms_version,
-                            payment_intent, receipt_url, invoice_url, invoice_pdf)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
-      [userId, session.id, session.metadata?.pack || "?", credits, session.amount_total || 0, session.currency || config.CURRENCY,
-       session.metadata?.consent_at || null, session.metadata?.terms_version || null,
-       links.paymentIntent, links.receiptUrl, links.invoiceUrl, links.invoicePdf]
-    );
-    if (!ins.rows.length) {
-      // уже начислено — просто дополним ссылки, если появились
-      await c.query(
-        `UPDATE payments SET payment_intent=coalesce(payment_intent,$2), receipt_url=coalesce(receipt_url,$3),
-                invoice_url=coalesce(invoice_url,$4), invoice_pdf=coalesce(invoice_pdf,$5) WHERE stripe_session=$1`,
-        [session.id, links.paymentIntent, links.receiptUrl, links.invoiceUrl, links.invoicePdf]
-      );
-      return false;
-    }
-    await creditPurchase(c, userId, credits, session.id);
-    return true;
-  });
-  if (credited) console.log(`Оплата: user ${userId} +${credits} кредитов (${session.id})`);
-  return credited;
+// Сессия Checkout оплачена → подписка активна
+async function syncSession(session) {
+  if (session.mode !== "subscription") return null;
+  const subId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+  if (!subId) return null;
+  const sub = typeof session.subscription === "object" ? session.subscription : await stripe.retrieveSubscription(subId);
+  const userId = await billing.syncStripeSubscription(
+    { ...sub, customer: sub.customer || session.customer },
+    Number(session.metadata?.user_id || session.client_reference_id)
+  );
+  if (userId && typeof session.invoice === "object" && session.invoice) await billing.recordStripeInvoice(session.invoice, userId);
+  if (userId && session.payment_status === "paid") await rewardReferrer(userId);
+  return userId;
 }
 
-// Клиент вернулся со Stripe — начисляем сразу, не дожидаясь вебхука
+// Клиент вернулся со Stripe — включаем подписку сразу, не дожидаясь вебхука
 async function handleConfirm(req, res, query) {
   const u = await requireUser(req);
   const id = String(query.get("session_id") || "");
@@ -492,12 +457,12 @@ async function handleConfirm(req, res, query) {
   if (!config.STRIPE_SECRET_KEY) throw auth.httpErr(503, "payments_off");
   const s = await stripe.retrieveSession(id);
   if (Number(s.metadata?.user_id || s.client_reference_id) !== u.id) throw auth.httpErr(403, "forbidden");
-  if (s.payment_status === "paid") await fulfill(s);
-  const me = await db.q("SELECT credits FROM users WHERE id=$1", [u.id]);
-  send(res, 200, { paid: s.payment_status === "paid", pending: s.payment_status === "unpaid" && s.status === "complete", credits: me.rows[0].credits });
+  if (s.status === "complete") await syncSession(s);
+  const fresh = (await db.q("SELECT * FROM users WHERE id=$1", [u.id])).rows[0];
+  send(res, 200, { paid: s.payment_status === "paid", ...(await billing.entitlement(fresh)) });
 }
 
-// Возврат: списываем кредиты пропорционально возвращённой сумме (не больше, чем есть на балансе)
+// Возврат (Stripe Dashboard / админка): отмечаем сумму; для разовых покупок — списываем кредиты пропорционально
 async function applyRefund(paymentIntent, totalRefundedCents, source) {
   return db.tx(async (c) => {
     const { rows } = await c.query("SELECT * FROM payments WHERE payment_intent=$1 FOR UPDATE", [paymentIntent]);
@@ -505,16 +470,16 @@ async function applyRefund(paymentIntent, totalRefundedCents, source) {
     if (!p) return null;
     const delta = Math.min(totalRefundedCents, p.amount_cents) - p.refunded_cents;
     if (delta <= 0) return { creditsRemoved: 0 };
-    const target = p.amount_cents ? Math.round((Math.min(totalRefundedCents, p.amount_cents) / p.amount_cents) * p.credits) : p.credits;
-    const toRemove = Math.max(0, Math.min(target, p.credits) - p.refunded_credits);
-    const bal = (await c.query("SELECT credits FROM users WHERE id=$1 FOR UPDATE", [p.user_id])).rows[0].credits;
-    const removed = Math.min(toRemove, bal);
-    if (removed > 0) await db.addCredits(p.user_id, -removed, "refund_payment", `${p.stripe_session}:${source}`, c);
-    await c.query(
-      "UPDATE payments SET refunded_cents=$2, refunded_credits=refunded_credits+$3 WHERE id=$1",
-      [p.id, p.refunded_cents + delta, toRemove]
-    );
-    console.log(`Возврат (${source}): ${p.stripe_session} −${delta / 100} ${p.currency}, −${removed} кредитов`);
+    let removed = 0, toRemove = 0;
+    if (p.credits > 0) {
+      const target = p.amount_cents ? Math.round((Math.min(totalRefundedCents, p.amount_cents) / p.amount_cents) * p.credits) : p.credits;
+      toRemove = Math.max(0, Math.min(target, p.credits) - p.refunded_credits);
+      const bal = (await c.query("SELECT credits FROM users WHERE id=$1 FOR UPDATE", [p.user_id])).rows[0].credits;
+      removed = Math.min(toRemove, bal);
+      if (removed > 0) await db.addCredits(p.user_id, -removed, "refund_payment", `${p.stripe_session}:${source}`, c);
+    }
+    await c.query("UPDATE payments SET refunded_cents=$2, refunded_credits=refunded_credits+$3 WHERE id=$1", [p.id, p.refunded_cents + delta, toRemove]);
+    console.log(`Возврат (${source}): ${p.stripe_session} −${delta / 100} ${p.currency}`);
     return { creditsRemoved: removed };
   });
 }
@@ -526,43 +491,82 @@ async function handleWebhook(req, res) {
   const event = JSON.parse(raw);
   const o = event.data?.object || {};
   stripe.setSetting("stripe_last_event_at", new Date().toISOString()).catch(() => {});
-  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
-    await fulfill(o);
-  } else if (event.type === "charge.refunded" && o.payment_intent) {
-    // возврат, сделанный в Stripe Dashboard или из админки, — синхронизируем кредиты
-    await applyRefund(o.payment_intent, o.amount_refunded || 0, "stripe");
-  } else if (event.type === "checkout.session.async_payment_failed") {
-    console.log("Отложенный платёж не прошёл:", o.id);
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded":
+        await syncSession(o);
+        break;
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted":
+        await billing.syncStripeSubscription(o);
+        break;
+      case "invoice.paid": {
+        // продление: обновляем период и записываем оплату
+        const subId = o.subscription || o.parent?.subscription_details?.subscription;
+        if (subId) {
+          const sub = typeof subId === "object" ? subId : await stripe.retrieveSubscription(subId);
+          const userId = await billing.syncStripeSubscription(sub);
+          await billing.recordStripeInvoice(o, userId);
+          if (userId) await rewardReferrer(userId);
+        }
+        break;
+      }
+      case "invoice.payment_failed":
+        console.log("Не прошла оплата подписки:", o.id);
+        break;
+      case "charge.refunded":
+        if (o.payment_intent) await applyRefund(o.payment_intent, o.amount_refunded || 0, "stripe");
+        break;
+    }
+  } catch (e) {
+    console.error("webhook", event.type, e.message);
+    return send(res, 500, { error: "webhook_failed" }); // Stripe повторит
   }
   send(res, 200, { received: true });
 }
 
-// ---------- покупки в iOS-приложении (Apple In-App Purchase) ----------
+// Отмена / возобновление подписки на сайте
+async function handleSubscriptionChange(req, res, cancel) {
+  const u = await requireUser(req);
+  if (u.sub_provider !== "stripe" || !u.stripe_subscription_id) throw auth.httpErr(400, "no_web_subscription");
+  const sub = await stripe.setCancelAtPeriodEnd(u.stripe_subscription_id, cancel).catch((e) => {
+    console.error("cancel:", e.message);
+    throw auth.httpErr(502, "payment_provider");
+  });
+  await billing.syncStripeSubscription(sub, u.id);
+  const fresh = (await db.q("SELECT * FROM users WHERE id=$1", [u.id])).rows[0];
+  send(res, 200, await billing.entitlement(fresh));
+}
+
+async function handlePortal(req, res) {
+  const u = await requireUser(req);
+  if (!u.stripe_customer_id) throw auth.httpErr(400, "no_web_subscription");
+  try {
+    const p = await stripe.billingPortal(u.stripe_customer_id, `${baseUrl(req)}/app`);
+    send(res, 200, { url: p.url });
+  } catch (e) {
+    console.error("portal:", e.message);
+    throw auth.httpErr(502, "payment_provider");
+  }
+}
+
+// ---------- подписка в iOS-приложении (App Store) ----------
 async function handleAppleTransaction(req, res) {
   const u = await requireUser(req);
   const { signedTransaction } = await readJson(req, 64 * 1024);
   const tx = apple.verifyTransaction(signedTransaction);
-  const pack = apple.packForProduct(tx.productId);
-  if (!pack) throw auth.httpErr(400, "unknown_product");
+  if (tx.productId !== apple.subscriptionProductId()) throw auth.httpErr(400, "unknown_product");
   // покупка должна быть сделана из этого аккаунта (appAccountToken задаёт приложение)
   if (!tx.appAccountToken || String(tx.appAccountToken).toLowerCase() !== String(u.app_account_token || "").toLowerCase())
     throw auth.httpErr(403, "wrong_account");
-  if (tx.revocationDate) throw auth.httpErr(409, "revoked");
-  const ref = `apple:${tx.transactionId}`;
-  const credited = await db.tx(async (c) => {
-    const ins = await c.query(
-      `INSERT INTO payments(user_id, stripe_session, payment_intent, provider, environment, pack, credits, amount_cents, currency)
-       VALUES ($1,$2,$2,'apple',$3,$4,$5,$6,$7) ON CONFLICT (stripe_session) DO NOTHING RETURNING id`,
-      [u.id, ref, tx.environment || null, pack.packId, pack.credits * (tx.quantity || 1),
-       Math.round((tx.price || 0) / 10), String(tx.currency || config.CURRENCY).toLowerCase()]
-    );
-    if (!ins.rows.length) return false; // эта транзакция уже начислена
-    await creditPurchase(c, u.id, pack.credits * (tx.quantity || 1), ref);
-    return true;
-  });
-  if (credited) console.log(`Apple: user ${u.id} +${pack.credits} кредитов (${ref}, ${tx.environment})`);
-  const me = await db.q("SELECT credits FROM users WHERE id=$1", [u.id]);
-  send(res, 200, { credited, credits: me.rows[0].credits });
+  const other = await db.q("SELECT id FROM users WHERE apple_original_tx=$1 AND id<>$2", [String(tx.originalTransactionId), u.id]);
+  if (other.rows.length) throw auth.httpErr(403, "wrong_account");
+  await billing.applyAppleSubscription(u.id, tx, null);
+  if (!tx.revocationDate) await rewardReferrer(u.id);
+  const fresh = (await db.q("SELECT * FROM users WHERE id=$1", [u.id])).rows[0];
+  send(res, 200, await billing.entitlement(fresh));
 }
 
 // App Store Server Notifications V2 — адрес указывается в App Store Connect
@@ -573,11 +577,17 @@ async function handleAppleNotification(req, res) {
   catch (e) { return send(res, 400, { error: e.code || "bad_jws" }); }
   const data = n.data || {};
   if (data.bundleId && data.bundleId !== config.APPLE_BUNDLE_ID) return send(res, 200, { ok: true });
-  if ((n.notificationType === "REFUND" || n.notificationType === "REVOKE") && data.signedTransactionInfo) {
+  if (data.signedTransactionInfo) {
     const tx = apple.verifyJWS(data.signedTransactionInfo);
-    const ref = `apple:${tx.transactionId}`;
-    const p = (await db.q("SELECT amount_cents FROM payments WHERE payment_intent=$1", [ref])).rows[0];
-    if (p) await applyRefund(ref, p.amount_cents, "apple");
+    const renewal = data.signedRenewalInfo ? apple.verifyJWS(data.signedRenewalInfo) : null;
+    if (tx.productId === apple.subscriptionProductId()) {
+      const r = await db.q(
+        "SELECT id FROM users WHERE apple_original_tx=$1 OR (app_account_token::text = lower($2)) LIMIT 1",
+        [String(tx.originalTransactionId), String(tx.appAccountToken || "")]
+      );
+      if (r.rows[0]) await billing.applyAppleSubscription(r.rows[0].id, tx, renewal);
+      else console.log("Apple: уведомление без пользователя", n.notificationType, tx.originalTransactionId);
+    }
   }
   await stripe.setSetting("apple_last_notification_at", new Date().toISOString()).catch(() => {});
   send(res, 200, { ok: true });
@@ -587,7 +597,9 @@ async function handleAppleNotification(req, res) {
 const adminRoutes = {
   "GET /api/admin/stats": async () => {
     const [u, j, p, p30] = await Promise.all([
-      db.q(`SELECT count(*)::int total, count(*) FILTER (WHERE created_at > now()-interval '7 days')::int week FROM users`),
+      db.q(`SELECT count(*)::int total, count(*) FILTER (WHERE created_at > now()-interval '7 days')::int week,
+                   count(*) FILTER (WHERE sub_expires_at > now() AND sub_status <> 'expired')::int subscribers,
+                   count(*) FILTER (WHERE sub_expires_at > now() AND sub_status <> 'expired' AND sub_provider='apple')::int apple_subs FROM users`),
       db.q(`SELECT count(*)::int total, count(*) FILTER (WHERE status='done')::int done,
                    count(*) FILTER (WHERE status='failed')::int failed,
                    count(*) FILTER (WHERE created_at > now()-interval '7 days')::int week FROM jobs`),
@@ -595,7 +607,8 @@ const adminRoutes = {
                    coalesce(sum(refunded_cents),0)::int refunded FROM payments`),
       db.q(`SELECT coalesce(sum(amount_cents - refunded_cents),0)::int revenue FROM payments WHERE created_at > now()-interval '30 days'`),
     ]);
-    return { users: u.rows[0], jobs: j.rows[0], payments: { ...p.rows[0], revenue30: p30.rows[0].revenue }, currency: config.CURRENCY };
+    return { users: u.rows[0], jobs: j.rows[0], payments: { ...p.rows[0], revenue30: p30.rows[0].revenue }, currency: config.SUB_CURRENCY,
+             plan: { price: config.SUB_PRICE, weeklyLimit: config.SUB_WEEKLY_LIMIT } };
   },
   "GET /api/admin/stripe": async () => stripe.getStatus(),
   "POST /api/admin/stripe/setup": async (req) => stripe.ensureSetup(config.PUBLIC_URL || baseUrl(req)),
@@ -634,6 +647,8 @@ const adminRoutes = {
     const s = (query.get("q") || "").trim().toLowerCase();
     const { rows } = await db.q(
       `SELECT u.id, u.email, u.credits, u.lang, u.blocked, u.created_at, u.last_seen_at,
+              u.sub_provider, u.sub_expires_at, u.sub_cancel_at_period_end,
+              (u.sub_expires_at > now() AND coalesce(u.sub_status,'') <> 'expired') AS subscribed,
               (SELECT count(*)::int FROM jobs WHERE user_id=u.id) jobs,
               (SELECT coalesce(sum(amount_cents),0)::int FROM payments WHERE user_id=u.id) paid,
               (SELECT email FROM users r WHERE r.id=u.referred_by) referred_by
@@ -725,7 +740,10 @@ const server = http.createServer(async (req, res) => {
     if (key === "POST /api/stripe/webhook") return await handleWebhook(req, res);
     if (key === "POST /api/checkout") return await handleCheckout(req, res);
     if (key === "GET /api/checkout/confirm") return await handleConfirm(req, res, query);
-    if (key === "GET /api/iap/products") return send(res, 200, { products: apple.products(), bundleId: config.APPLE_BUNDLE_ID });
+    if (key === "GET /api/iap/products") return send(res, 200, { subscription: apple.subscriptionProductId(), weeklyLimit: config.SUB_WEEKLY_LIMIT });
+    if (key === "POST /api/billing/cancel") return await handleSubscriptionChange(req, res, true);
+    if (key === "POST /api/billing/resume") return await handleSubscriptionChange(req, res, false);
+    if (key === "POST /api/billing/portal") return await handlePortal(req, res);
     if (key === "POST /api/iap/apple") return await handleAppleTransaction(req, res);
     if (key === "POST /api/iap/notifications") return await handleAppleNotification(req, res);
     if (key === "GET /api/download") return await handleDownload(req, res, query);
